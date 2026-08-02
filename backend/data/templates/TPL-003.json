@@ -1,0 +1,105 @@
+{
+  "id": "TPL-003",
+  "name": "West Facing 832 sq ft Two Bedroom",
+  "bhk": "2BHK",
+  "plot_width_ft": 26.0,
+  "plot_length_ft": 32.0,
+  "plot_shape": "rectangle",
+  "style": "minimal",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Bedroom 1",
+      "x": 0.0,
+      "y": 21.0,
+      "width": 13.0,
+      "height": 11.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 13.0,
+      "y": 21.0,
+      "width": 6.0,
+      "height": 11.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Toilet",
+      "x": 19.0,
+      "y": 26.0,
+      "width": 7.0,
+      "height": 6.0
+    },
+    {
+      "type": "store_room",
+      "name": "Store",
+      "x": 19.0,
+      "y": 21.0,
+      "width": 7.0,
+      "height": 5.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 2",
+      "x": 0.0,
+      "y": 11.0,
+      "width": 13.0,
+      "height": 10.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 13.0,
+      "y": 13.0,
+      "width": 13.0,
+      "height": 8.0
+    },
+    {
+      "type": "living_room",
+      "name": "Hall",
+      "x": 13.0,
+      "y": 0.0,
+      "width": 13.0,
+      "height": 13.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 13.0,
+      "height": 11.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "store_room",
+      "relation": "adjacent"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    }
+  ],
+  "description": "Efficient 832 sq ft west-facing plan. Two equal bedrooms share the left bay, the hall sits at the entrance corner with the kitchen behind it, and a dog-leg staircase is tucked under the rear-left corner to keep circulation off the hall.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "2BHK(2).jpeg",
+    "facing": "west",
+    "floors": 1,
+    "built_up_sqft": 832.0,
+    "tags": [
+      "2BHK",
+      "minimal",
+      "west"
+    ]
+  }
+}

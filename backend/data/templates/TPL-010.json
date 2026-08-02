@@ -1,0 +1,158 @@
+{
+  "id": "TPL-010",
+  "name": "1800 sq ft East Facing Three Bedroom",
+  "bhk": "3BHK",
+  "plot_width_ft": 36.0,
+  "plot_length_ft": 50.0,
+  "plot_shape": "rectangle",
+  "style": "traditional",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Bedroom 1",
+      "x": 0.0,
+      "y": 36.0,
+      "width": 13.0,
+      "height": 14.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 13.0,
+      "y": 41.0,
+      "width": 5.0,
+      "height": 9.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 18.0,
+      "y": 41.0,
+      "width": 5.0,
+      "height": 9.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 2",
+      "x": 23.0,
+      "y": 36.0,
+      "width": 13.0,
+      "height": 14.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility Space",
+      "x": 13.0,
+      "y": 36.0,
+      "width": 10.0,
+      "height": 5.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "C Toilet",
+      "x": 0.0,
+      "y": 30.0,
+      "width": 11.0,
+      "height": 6.0
+    },
+    {
+      "type": "study_room",
+      "name": "Verandah Study",
+      "x": 0.0,
+      "y": 18.0,
+      "width": 11.0,
+      "height": 12.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining Hall",
+      "x": 11.0,
+      "y": 24.0,
+      "width": 12.0,
+      "height": 12.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Bedroom 3",
+      "x": 23.0,
+      "y": 24.0,
+      "width": 13.0,
+      "height": 12.0
+    },
+    {
+      "type": "pooja_room",
+      "name": "Puja",
+      "x": 11.0,
+      "y": 18.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living Hall",
+      "x": 17.0,
+      "y": 10.0,
+      "width": 19.0,
+      "height": 14.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 0.0,
+      "y": 10.0,
+      "width": 17.0,
+      "height": 8.0
+    },
+    {
+      "type": "staircase",
+      "name": "Stairs",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 17.0,
+      "height": 10.0
+    },
+    {
+      "type": "balcony",
+      "name": "Open Space",
+      "x": 17.0,
+      "y": 0.0,
+      "width": 19.0,
+      "height": 10.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    }
+  ],
+  "description": "East-facing 1800 sq ft house arranged around a large living hall at the entrance. Three bedrooms occupy the rear half with two toilets between them, the dining hall sits centrally, and a pooja room is set beside the kitchen as tradition dictates.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "3BHK(6).jpeg",
+    "facing": "east",
+    "floors": 1,
+    "built_up_sqft": 1610.0,
+    "tags": [
+      "3BHK",
+      "traditional",
+      "east"
+    ]
+  }
+}

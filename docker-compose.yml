@@ -1,0 +1,57 @@
+name: floor-planner
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: floorplanner
+      POSTGRES_PASSWORD: floorplanner
+      POSTGRES_DB: floorplanner
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U floorplanner -d floorplanner"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+psycopg://floorplanner:floorplanner@db:5432/floorplanner
+      CORS_ORIGINS: http://localhost:8080
+      # Supply these in a .env file next to this compose file.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      HUGGINGFACE_API_KEY: ${HUGGINGFACE_API_KEY:-}
+      IMAGE_STRATEGY: ${IMAGE_STRATEGY:-hybrid}
+      IMAGE_PROVIDER: ${IMAGE_PROVIDER:-huggingface}
+    volumes:
+      - images:/app/storage/images
+      - index:/app/storage/index
+    depends_on:
+      db:
+        condition: service_healthy
+    # Load the knowledge base and build the vector index before serving.
+    command: >
+      sh -c "python scripts/seed_database.py &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  images:
+  index:

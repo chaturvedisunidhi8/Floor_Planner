@@ -1,0 +1,152 @@
+{
+  "id": "TPL-019",
+  "name": "30x45 Traditional Three Bedroom with Pooja",
+  "bhk": "3BHK",
+  "plot_width_ft": 30.0,
+  "plot_length_ft": 45.0,
+  "plot_shape": "rectangle",
+  "style": "traditional",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Master Bedroom",
+      "x": 0.0,
+      "y": 32.0,
+      "width": 14.0,
+      "height": 13.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 14.0,
+      "y": 38.0,
+      "width": 8.0,
+      "height": 7.0
+    },
+    {
+      "type": "pooja_room",
+      "name": "Pooja Room",
+      "x": 22.0,
+      "y": 38.0,
+      "width": 8.0,
+      "height": 7.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Guest Bedroom",
+      "x": 14.0,
+      "y": 26.0,
+      "width": 16.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 0.0,
+      "y": 24.0,
+      "width": 7.0,
+      "height": 8.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 7.0,
+      "y": 24.0,
+      "width": 7.0,
+      "height": 8.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Children Bedroom",
+      "x": 0.0,
+      "y": 10.0,
+      "width": 14.0,
+      "height": 14.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living Room",
+      "x": 14.0,
+      "y": 12.0,
+      "width": 16.0,
+      "height": 14.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining Room",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 10.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 14.0,
+      "y": 0.0,
+      "width": 10.0,
+      "height": 12.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Common Bath",
+      "x": 24.0,
+      "y": 6.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "wash_area",
+      "name": "Wash Area",
+      "x": 24.0,
+      "y": 0.0,
+      "width": 6.0,
+      "height": 6.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "wash_area",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    }
+  ],
+  "description": "Vastu-minded three bedroom home. The pooja room occupies the north-east corner, the kitchen the south-east, and the master bedroom the south-west. A square living room anchors the middle with the dining room opening directly off the kitchen.",
+  "metadata": {
+    "source": "architect-standard",
+    "reference_image": null,
+    "facing": "east",
+    "floors": 1,
+    "built_up_sqft": 1350.0,
+    "tags": [
+      "3BHK",
+      "traditional",
+      "east"
+    ]
+  }
+}

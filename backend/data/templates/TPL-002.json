@@ -1,0 +1,144 @@
+{
+  "id": "TPL-002",
+  "name": "Narrow Plot Two Bedroom with Covered Parking",
+  "bhk": "2BHK",
+  "plot_width_ft": 25.0,
+  "plot_length_ft": 45.0,
+  "plot_shape": "rectangle",
+  "style": "modern",
+  "rooms": [
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 0.0,
+      "y": 34.0,
+      "width": 11.0,
+      "height": 11.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Open Kitchen",
+      "x": 11.0,
+      "y": 37.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Toilet",
+      "x": 19.0,
+      "y": 37.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "C. Bed Room",
+      "x": 11.0,
+      "y": 26.0,
+      "width": 14.0,
+      "height": 11.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 18.0,
+      "y": 21.0,
+      "width": 7.0,
+      "height": 5.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 11.0,
+      "y": 21.0,
+      "width": 7.0,
+      "height": 5.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "M. Bed Room",
+      "x": 11.0,
+      "y": 10.0,
+      "width": 14.0,
+      "height": 11.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living",
+      "x": 0.0,
+      "y": 19.0,
+      "width": 11.0,
+      "height": 15.0
+    },
+    {
+      "type": "foyer",
+      "name": "Foyer",
+      "x": 0.0,
+      "y": 10.0,
+      "width": 11.0,
+      "height": 9.0
+    },
+    {
+      "type": "parking",
+      "name": "Parking",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 10.0
+    },
+    {
+      "type": "garden",
+      "name": "Garden",
+      "x": 14.0,
+      "y": 0.0,
+      "width": 11.0,
+      "height": 10.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    },
+    {
+      "source": "living_room",
+      "target": "foyer",
+      "relation": "connected"
+    }
+  ],
+  "description": "Classic 25x45 narrow-plot layout. Covered parking occupies the street edge, the living room opens off a side foyer, and both bedrooms stack along the right bay with the master taking the quieter middle position. Open kitchen adjoins dining.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "2BHK(1).jpeg",
+    "facing": "east",
+    "floors": 1,
+    "built_up_sqft": 875.0,
+    "tags": [
+      "2BHK",
+      "modern",
+      "east"
+    ]
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "id": "TPL-008",
+  "name": "1600 sq ft North Facing Three Bedroom",
+  "bhk": "3BHK",
+  "plot_width_ft": 34.0,
+  "plot_length_ft": 47.0,
+  "plot_shape": "rectangle",
+  "style": "modern",
+  "rooms": [
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom",
+      "x": 0.0,
+      "y": 35.0,
+      "width": 12.0,
+      "height": 12.0
+    },
+    {
+      "type": "study_room",
+      "name": "Drawing",
+      "x": 12.0,
+      "y": 35.0,
+      "width": 10.0,
+      "height": 12.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Bedroom",
+      "x": 22.0,
+      "y": 35.0,
+      "width": 12.0,
+      "height": 12.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Toilet",
+      "x": 0.0,
+      "y": 29.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 22.0,
+      "y": 29.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 28.0,
+      "y": 29.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "M. Bedroom",
+      "x": 0.0,
+      "y": 14.0,
+      "width": 12.0,
+      "height": 15.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 12.0,
+      "y": 25.0,
+      "width": 10.0,
+      "height": 10.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living",
+      "x": 12.0,
+      "y": 15.0,
+      "width": 10.0,
+      "height": 10.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 22.0,
+      "y": 17.0,
+      "width": 8.0,
+      "height": 12.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility",
+      "x": 30.0,
+      "y": 17.0,
+      "width": 4.0,
+      "height": 12.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 12.0,
+      "y": 8.0,
+      "width": 12.0,
+      "height": 7.0
+    },
+    {
+      "type": "pooja_room",
+      "name": "Pooja",
+      "x": 0.0,
+      "y": 8.0,
+      "width": 12.0,
+      "height": 6.0
+    },
+    {
+      "type": "parking",
+      "name": "Parking",
+      "x": 24.0,
+      "y": 0.0,
+      "width": 10.0,
+      "height": 17.0
+    },
+    {
+      "type": "garden",
+      "name": "Garden",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 24.0,
+      "height": 8.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "balcony",
+      "relation": "connected"
+    }
+  ],
+  "description": "North-facing 1600 sq ft plan with a formal drawing room at the rear, living and dining stacked along the spine, and the master suite kept on the quiet left flank. Kitchen backs onto a dedicated utility with a balcony overlooking the front garden.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "3BHK(3).jpeg",
+    "facing": "north",
+    "floors": 1,
+    "built_up_sqft": 1124.0,
+    "tags": [
+      "3BHK",
+      "modern",
+      "north"
+    ]
+  }
+}

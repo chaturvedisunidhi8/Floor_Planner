@@ -1,0 +1,33 @@
+line-length = 100
+target-version = "py311"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "ARG", "RUF"]
+ignore = [
+    # The geometry code legitimately shadows short names like `a`/`b`.
+    "E741",
+    # Pydantic validators and FastAPI dependencies take unused args by design.
+    "ARG002",
+    "ARG003",
+    "B008",
+    # `str, Enum` is deliberate: it keeps the members JSON-serialisable and
+    # comparable to plain strings, which StrEnum changes subtly.
+    "UP042",
+    # int() on an already-int expression documents the intent at call sites
+    # where the value is a float everywhere else in the same block.
+    "RUF046",
+    # FastAPI dictates the signature of exception handlers and the lifespan
+    # hook, and the private drawing helpers keep one uniform parameter list so
+    # the render loop can call them interchangeably.
+    "ARG001",
+    "ARG004",
+]
+
+[lint.per-file-ignores]
+# Test helpers deliberately reach into internals and re-import locally.
+"tests/*" = ["ARG001", "PLR2004"]
+# Scripts adjust sys.path before importing the package.
+"scripts/*" = ["E402"]
+
+[lint.isort]
+known-first-party = ["app", "tests"]

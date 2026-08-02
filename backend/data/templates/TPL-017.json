@@ -1,0 +1,118 @@
+{
+  "id": "TPL-017",
+  "name": "22x35 Compact Studio Bedroom Home",
+  "bhk": "1BHK",
+  "plot_width_ft": 22.0,
+  "plot_length_ft": 35.0,
+  "plot_shape": "rectangle",
+  "style": "minimal",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Master Bedroom",
+      "x": 0.0,
+      "y": 23.0,
+      "width": 12.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 12.0,
+      "y": 28.0,
+      "width": 6.0,
+      "height": 7.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 18.0,
+      "y": 28.0,
+      "width": 4.0,
+      "height": 7.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 12.0,
+      "y": 19.0,
+      "width": 10.0,
+      "height": 9.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living Room",
+      "x": 0.0,
+      "y": 8.0,
+      "width": 12.0,
+      "height": 15.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 12.0,
+      "y": 8.0,
+      "width": 10.0,
+      "height": 11.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Common Bath",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 6.0,
+      "y": 0.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility",
+      "x": 14.0,
+      "y": 0.0,
+      "width": 8.0,
+      "height": 8.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    }
+  ],
+  "description": "Minimal single-bedroom home for a narrow urban plot. The living and dining share an open L, the kitchen backs onto the bedroom's service wall to shorten the plumbing run, and a slim balcony off the bedroom brings light into the rear half.",
+  "metadata": {
+    "source": "architect-standard",
+    "reference_image": null,
+    "facing": "east",
+    "floors": 1,
+    "built_up_sqft": 742.0,
+    "tags": [
+      "1BHK",
+      "minimal",
+      "east"
+    ]
+  }
+}

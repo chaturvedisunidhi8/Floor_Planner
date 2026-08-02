@@ -1,0 +1,173 @@
+{
+  "id": "TPL-009",
+  "name": "Three Bedroom Deck Apartment",
+  "bhk": "3BHK",
+  "plot_width_ft": 40.0,
+  "plot_length_ft": 30.0,
+  "plot_shape": "rectangle",
+  "style": "luxury",
+  "rooms": [
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 3",
+      "x": 0.0,
+      "y": 16.0,
+      "width": 11.0,
+      "height": 14.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet 1",
+      "x": 0.0,
+      "y": 8.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "store_room",
+      "name": "Store",
+      "x": 6.0,
+      "y": 8.0,
+      "width": 5.0,
+      "height": 8.0
+    },
+    {
+      "type": "foyer",
+      "name": "Foyer",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 11.0,
+      "height": 8.0
+    },
+    {
+      "type": "balcony",
+      "name": "Wide Deck",
+      "x": 11.0,
+      "y": 24.0,
+      "width": 13.0,
+      "height": 6.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living / Dining",
+      "x": 11.0,
+      "y": 6.0,
+      "width": 13.0,
+      "height": 18.0
+    },
+    {
+      "type": "balcony",
+      "name": "Wide Deck",
+      "x": 11.0,
+      "y": 0.0,
+      "width": 13.0,
+      "height": 6.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 24.0,
+      "y": 20.0,
+      "width": 8.0,
+      "height": 10.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility",
+      "x": 24.0,
+      "y": 14.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Toilet",
+      "x": 24.0,
+      "y": 7.0,
+      "width": 8.0,
+      "height": 7.0
+    },
+    {
+      "type": "passage",
+      "name": "Wide Passage",
+      "x": 24.0,
+      "y": 0.0,
+      "width": 8.0,
+      "height": 7.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "Bedroom 1",
+      "x": 32.0,
+      "y": 18.0,
+      "width": 8.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet 2",
+      "x": 32.0,
+      "y": 12.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Bedroom 2",
+      "x": 32.0,
+      "y": 0.0,
+      "width": 8.0,
+      "height": 12.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "living_room",
+      "target": "foyer",
+      "relation": "connected"
+    },
+    {
+      "source": "passage",
+      "target": "living_room",
+      "relation": "connected"
+    }
+  ],
+  "description": "Wide-frontage apartment with a through living-dining flanked by decks on both faces. A service bay carries kitchen, utility and the common toilet, while the master and second bedroom share the far column with a toilet between them.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "3BHK(5).jpeg",
+    "facing": "east",
+    "floors": 1,
+    "built_up_sqft": 1044.0,
+    "tags": [
+      "3BHK",
+      "luxury",
+      "east"
+    ]
+  }
+}

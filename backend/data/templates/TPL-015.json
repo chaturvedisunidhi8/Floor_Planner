@@ -1,0 +1,212 @@
+{
+  "id": "TPL-015",
+  "name": "40x45 Four Bedroom with Three Balconies",
+  "bhk": "4BHK",
+  "plot_width_ft": 40.0,
+  "plot_length_ft": 45.0,
+  "plot_shape": "rectangle",
+  "style": "modern",
+  "rooms": [
+    {
+      "type": "attached_bathroom",
+      "name": "Att. Toilet",
+      "x": 0.0,
+      "y": 36.0,
+      "width": 8.0,
+      "height": 9.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 8.0,
+      "y": 36.0,
+      "width": 6.0,
+      "height": 9.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "M. Bed Room 4",
+      "x": 0.0,
+      "y": 20.0,
+      "width": 14.0,
+      "height": 16.0
+    },
+    {
+      "type": "store_room",
+      "name": "Dressing Area",
+      "x": 0.0,
+      "y": 14.0,
+      "width": 14.0,
+      "height": 6.0
+    },
+    {
+      "type": "bedroom",
+      "name": "Bed Room 1",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 14.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "M. Bed Room 3",
+      "x": 14.0,
+      "y": 32.0,
+      "width": 12.0,
+      "height": 13.0
+    },
+    {
+      "type": "passage",
+      "name": "Passage",
+      "x": 14.0,
+      "y": 26.0,
+      "width": 12.0,
+      "height": 6.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining Area",
+      "x": 14.0,
+      "y": 14.0,
+      "width": 12.0,
+      "height": 12.0
+    },
+    {
+      "type": "living_room",
+      "name": "Drawing Room",
+      "x": 14.0,
+      "y": 0.0,
+      "width": 12.0,
+      "height": 14.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "M. Bed Room 2",
+      "x": 26.0,
+      "y": 33.0,
+      "width": 14.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Att. Toilet",
+      "x": 26.0,
+      "y": 26.0,
+      "width": 7.0,
+      "height": 7.0
+    },
+    {
+      "type": "wash_area",
+      "name": "Wash Area",
+      "x": 33.0,
+      "y": 26.0,
+      "width": 7.0,
+      "height": 7.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 26.0,
+      "y": 14.0,
+      "width": 10.0,
+      "height": 12.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "G. Toilet",
+      "x": 36.0,
+      "y": 20.0,
+      "width": 4.0,
+      "height": 6.0
+    },
+    {
+      "type": "store_room",
+      "name": "Store Room",
+      "x": 36.0,
+      "y": 14.0,
+      "width": 4.0,
+      "height": 6.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 26.0,
+      "y": 8.0,
+      "width": 14.0,
+      "height": 6.0
+    },
+    {
+      "type": "foyer",
+      "name": "Foyer",
+      "x": 26.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 8.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "wash_area",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "store_room",
+      "relation": "adjacent"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "living_room",
+      "target": "foyer",
+      "relation": "connected"
+    }
+  ],
+  "description": "Four bedroom floor organised as three parallel bays. The middle bay carries the circulation and dining, the left bay holds the master suite with its dressing area, and the right bay stacks the second bedroom over the kitchen and service block.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "4BHK(5).jpeg",
+    "facing": "north",
+    "floors": 1,
+    "built_up_sqft": 1662.0,
+    "tags": [
+      "4BHK",
+      "modern",
+      "north"
+    ]
+  }
+}

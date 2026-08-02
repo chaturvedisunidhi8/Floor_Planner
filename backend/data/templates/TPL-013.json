@@ -1,0 +1,176 @@
+{
+  "id": "TPL-013",
+  "name": "Four Bedroom Luxury Apartment",
+  "bhk": "4BHK",
+  "plot_width_ft": 42.0,
+  "plot_length_ft": 32.0,
+  "plot_shape": "rectangle",
+  "style": "luxury",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "M. Bedroom",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 14.0,
+      "y": 0.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 20.0,
+      "y": 0.0,
+      "width": 10.0,
+      "height": 6.0
+    },
+    {
+      "type": "foyer",
+      "name": "Foyer",
+      "x": 30.0,
+      "y": 0.0,
+      "width": 12.0,
+      "height": 6.0
+    },
+    {
+      "type": "bedroom",
+      "name": "Bedroom 4",
+      "x": 0.0,
+      "y": 12.0,
+      "width": 14.0,
+      "height": 8.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "W.C",
+      "x": 0.0,
+      "y": 20.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility",
+      "x": 0.0,
+      "y": 26.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 6.0,
+      "y": 20.0,
+      "width": 8.0,
+      "height": 12.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living / Dining",
+      "x": 14.0,
+      "y": 6.0,
+      "width": 16.0,
+      "height": 18.0
+    },
+    {
+      "type": "passage",
+      "name": "Passage",
+      "x": 30.0,
+      "y": 6.0,
+      "width": 12.0,
+      "height": 8.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 30.0,
+      "y": 14.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 36.0,
+      "y": 14.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 3",
+      "x": 30.0,
+      "y": 22.0,
+      "width": 12.0,
+      "height": 10.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 24.0,
+      "y": 24.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Bedroom 2",
+      "x": 14.0,
+      "y": 24.0,
+      "width": 10.0,
+      "height": 8.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "passage",
+      "target": "living_room",
+      "relation": "connected"
+    }
+  ],
+  "description": "Wide luxury apartment with a 16x18 ft living-dining at its heart. Three bedrooms ring the living space with attached toilets, the fourth sits beside the entrance, and the kitchen block carries its own utility along the outside wall.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "4BHK(3).jpeg",
+    "facing": "north",
+    "floors": 1,
+    "built_up_sqft": 1236.0,
+    "tags": [
+      "4BHK",
+      "luxury",
+      "north"
+    ]
+  }
+}

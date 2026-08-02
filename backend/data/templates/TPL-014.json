@@ -1,0 +1,210 @@
+{
+  "id": "TPL-014",
+  "name": "2122 sq ft Four Bedroom Penthouse",
+  "bhk": "4BHK",
+  "plot_width_ft": 45.0,
+  "plot_length_ft": 50.0,
+  "plot_shape": "rectangle",
+  "style": "luxury",
+  "rooms": [
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 0.0,
+      "y": 44.0,
+      "width": 14.0,
+      "height": 6.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 14.0,
+      "y": 44.0,
+      "width": 12.0,
+      "height": 6.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living",
+      "x": 0.0,
+      "y": 20.0,
+      "width": 26.0,
+      "height": 24.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "M. Bed Rm.",
+      "x": 26.0,
+      "y": 36.0,
+      "width": 14.0,
+      "height": 14.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 40.0,
+      "y": 36.0,
+      "width": 5.0,
+      "height": 6.0
+    },
+    {
+      "type": "store_room",
+      "name": "Dress",
+      "x": 40.0,
+      "y": 42.0,
+      "width": 5.0,
+      "height": 8.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 26.0,
+      "y": 24.0,
+      "width": 14.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 40.0,
+      "y": 26.0,
+      "width": 5.0,
+      "height": 10.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bed Room 2",
+      "x": 26.0,
+      "y": 12.0,
+      "width": 14.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 40.0,
+      "y": 16.0,
+      "width": 5.0,
+      "height": 10.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Bed Room 3",
+      "x": 26.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 40.0,
+      "y": 6.0,
+      "width": 5.0,
+      "height": 10.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Toilet",
+      "x": 40.0,
+      "y": 0.0,
+      "width": 5.0,
+      "height": 6.0
+    },
+    {
+      "type": "bedroom",
+      "name": "Bed Room 4",
+      "x": 12.0,
+      "y": 6.0,
+      "width": 14.0,
+      "height": 14.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 0.0,
+      "y": 6.0,
+      "width": 12.0,
+      "height": 14.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "store_room",
+      "name": "Servant",
+      "x": 8.0,
+      "y": 0.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "foyer",
+      "name": "Foyer",
+      "x": 16.0,
+      "y": 0.0,
+      "width": 10.0,
+      "height": 6.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "store_room",
+      "relation": "adjacent"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "balcony",
+      "relation": "connected"
+    }
+  ],
+  "description": "Penthouse-style floor with a 26x24 ft living room opening onto two balconies. The bedroom wing runs the full right flank so every room gets an attached toilet on the outside wall, and the kitchen, utility and servant room form a self-contained bay.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "4BHK(4).jpeg",
+    "facing": "west",
+    "floors": 1,
+    "built_up_sqft": 2094.0,
+    "tags": [
+      "4BHK",
+      "luxury",
+      "west"
+    ]
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "id": "TPL-004",
+  "name": "20x40 Two Bedroom with Scooter Parking",
+  "bhk": "2BHK",
+  "plot_width_ft": 20.0,
+  "plot_length_ft": 40.0,
+  "plot_shape": "rectangle",
+  "style": "modern",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Bedroom 1",
+      "x": 0.0,
+      "y": 29.0,
+      "width": 10.0,
+      "height": 11.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 10.0,
+      "y": 29.0,
+      "width": 10.0,
+      "height": 11.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "W.C / Bath",
+      "x": 0.0,
+      "y": 22.0,
+      "width": 5.0,
+      "height": 7.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "W.C",
+      "x": 0.0,
+      "y": 18.0,
+      "width": 5.0,
+      "height": 4.0
+    },
+    {
+      "type": "living_room",
+      "name": "Drawing / Living",
+      "x": 5.0,
+      "y": 18.0,
+      "width": 15.0,
+      "height": 11.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 2",
+      "x": 0.0,
+      "y": 7.0,
+      "width": 11.0,
+      "height": 11.0
+    },
+    {
+      "type": "wash_area",
+      "name": "Wash Area",
+      "x": 11.0,
+      "y": 14.0,
+      "width": 9.0,
+      "height": 4.0
+    },
+    {
+      "type": "parking",
+      "name": "Parking",
+      "x": 11.0,
+      "y": 0.0,
+      "width": 9.0,
+      "height": 14.0
+    },
+    {
+      "type": "garden",
+      "name": "Garden",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 11.0,
+      "height": 7.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    }
+  ],
+  "description": "Tight 20 ft frontage handled with a single-loaded corridor: bedrooms sit front and rear, the drawing-cum-living room occupies the middle third, and the kitchen takes the rear-right corner for cross ventilation. Paved parking bay at the entrance.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "2BHK(4).jpeg",
+    "facing": "east",
+    "floors": 1,
+    "built_up_sqft": 597.0,
+    "tags": [
+      "2BHK",
+      "modern",
+      "east"
+    ]
+  }
+}

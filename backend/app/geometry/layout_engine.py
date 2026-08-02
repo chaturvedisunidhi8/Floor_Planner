@@ -1,0 +1,577 @@
+"""Template-guided layout generation.
+
+Step 4 of the specification: produce unique layouts that follow the user's
+requirements, are inspired by the matched templates, and are *not* copies.
+
+The pipeline for one variation:
+
+1. **Orient**  - rotate the template when the user's plot is the other way up.
+2. **Scale**   - map the template's rectangles onto the user's plot.
+3. **Reconcile** - drop rooms the client did not ask for, insert the ones they
+   did by splitting a suitable neighbour, retype bedrooms to match the BHK.
+4. **Vary**    - apply seeded operators (mirror, swap same-zone pairs, shift
+   shared wall lines, resize the social core) so each variation is genuinely
+   different rather than a recolour of the same plan.
+5. **Align & repair** - snap every edge to shared wall lines, resolve any
+   overlap the variation introduced, and grow the envelope to the plot edges.
+
+Everything is driven by a seeded ``random.Random``, so a given
+(template, seed) pair always yields the same plan - essential for
+reproducible tests and for regenerating an image the user has already seen.
+"""
+
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass, replace
+
+from app.core.logging import get_logger
+from app.geometry.primitives import GRID, Rect, align_walls, min_area, min_side, snap
+from app.geometry.validator import (
+    LayoutRepairer,
+    LayoutValidator,
+    absorb_vacated,
+    cap_room_sizes,
+    fill_gaps,
+    fit_to_plot,
+    merge_adjacent_passages,
+    rebalance_room_sizes,
+)
+from app.schemas.enums import RoomType
+from app.schemas.requirements import FloorPlanRequirements
+from app.schemas.template import FloorPlanTemplate
+
+logger = get_logger(__name__)
+
+#: Bedrooms in descending order of desirability - the largest template bedroom
+#: becomes the master, the next the children's room, and so on.
+BEDROOM_PRIORITY: tuple[RoomType, ...] = (
+    RoomType.MASTER_BEDROOM,
+    RoomType.CHILDREN_BEDROOM,
+    RoomType.GUEST_BEDROOM,
+    RoomType.BEDROOM,
+)
+
+#: Which rooms a newly requested room may be carved out of, best host first.
+CARVE_HOSTS: dict[RoomType, tuple[RoomType, ...]] = {
+    RoomType.POOJA_ROOM: (RoomType.LIVING_ROOM, RoomType.DINING_ROOM, RoomType.PASSAGE),
+    RoomType.STUDY_ROOM: (RoomType.LIVING_ROOM, RoomType.BEDROOM, RoomType.GUEST_BEDROOM),
+    RoomType.STORE_ROOM: (RoomType.KITCHEN, RoomType.PASSAGE, RoomType.LIVING_ROOM),
+    RoomType.UTILITY_ROOM: (RoomType.KITCHEN, RoomType.WASH_AREA, RoomType.STORE_ROOM),
+    RoomType.WASH_AREA: (RoomType.KITCHEN, RoomType.UTILITY_ROOM, RoomType.BALCONY),
+    RoomType.DINING_ROOM: (RoomType.LIVING_ROOM, RoomType.KITCHEN),
+    RoomType.BALCONY: (RoomType.LIVING_ROOM, RoomType.MASTER_BEDROOM),
+    RoomType.STAIRCASE: (RoomType.LIVING_ROOM, RoomType.PASSAGE, RoomType.FOYER),
+    RoomType.PARKING: (RoomType.GARDEN, RoomType.LIVING_ROOM),
+    RoomType.GARDEN: (RoomType.PARKING, RoomType.BALCONY),
+    RoomType.COMMON_BATHROOM: (RoomType.PASSAGE, RoomType.STORE_ROOM, RoomType.LIVING_ROOM),
+    RoomType.ATTACHED_BATHROOM: (RoomType.MASTER_BEDROOM, RoomType.BEDROOM, RoomType.PASSAGE),
+}
+
+#: Rooms that may be removed when the client did not request them.
+OPTIONAL_ROOMS: frozenset[RoomType] = frozenset(
+    {
+        RoomType.POOJA_ROOM,
+        RoomType.STUDY_ROOM,
+        RoomType.STORE_ROOM,
+        RoomType.UTILITY_ROOM,
+        RoomType.WASH_AREA,
+        RoomType.BALCONY,
+        RoomType.PARKING,
+        RoomType.GARDEN,
+        RoomType.STAIRCASE,
+        RoomType.DINING_ROOM,
+    }
+)
+
+
+@dataclass
+class LayoutPlan:
+    """A finished, validated layout ready to be rendered."""
+
+    rooms: list[Rect]
+    plot_width: float
+    plot_length: float
+    template_id: str
+    template_name: str
+    variation: str
+    seed: int
+    warnings: list[str]
+
+    @property
+    def built_up_sqft(self) -> float:
+        return round(sum(r.area for r in self.rooms if not r.type.is_outdoor), 1)
+
+    @property
+    def room_count(self) -> int:
+        return len(self.rooms)
+
+
+class LayoutEngine:
+    """Turns (template, requirements, seed) into a distinct, valid layout."""
+
+    def __init__(self, requirements: FloorPlanRequirements) -> None:
+        self._req = requirements
+        self._w = requirements.plot.width_ft
+        self._l = requirements.plot.length_ft
+        self._validator = LayoutValidator(self._w, self._l)
+        self._repairer = LayoutRepairer(self._w, self._l)
+
+    def generate(self, template: FloorPlanTemplate, seed: int, variation_index: int) -> LayoutPlan:
+        rng = random.Random(seed)
+
+        rooms = self._orient_and_scale(template)
+        rooms = self._reconcile_programme(rooms, rng)
+        rooms, variation = self._apply_variation(rooms, rng, variation_index)
+
+        rooms = align_walls(rooms)
+        rooms = self._repairer.repair(rooms)
+        # Reach the plot edges first, then claw back the service rooms that
+        # scaling inflated - capping earlier would just be undone by the fit.
+        rooms = fit_to_plot(rooms, self._w, self._l)
+        rooms = self._repairer.repair(rooms)
+        rooms = cap_room_sizes(rooms)
+        rooms = fill_gaps(rooms, self._w, self._l)
+        rooms = self._repairer.repair(rooms)
+        rooms = self._enforce_minimum_sizes(rooms)
+        rooms = fill_gaps(rooms, self._w, self._l)
+        rooms = self._repairer.repair(rooms)
+        # Strict pass last: repair can reopen a pocket by trimming an overlap,
+        # and only overlap-safe merges may run once nothing will repair after.
+        rooms = fill_gaps(rooms, self._w, self._l, strict=True)
+        rooms = merge_adjacent_passages(rooms)
+        # Even out the plan last. Wall shifts are geometry-neutral, but the
+        # trim-and-reabsorb fallback is not, so tidy up behind it.
+        rooms = rebalance_room_sizes(rooms)
+        rooms = self._repairer.repair(rooms)
+        rooms = fill_gaps(rooms, self._w, self._l, strict=True)
+
+        report = self._validator.validate(rooms)
+        if not report.ok:
+            logger.info(
+                "Layout from %s (seed %d) needed a second repair pass: %s",
+                template.id,
+                seed,
+                "; ".join(report.errors[:3]),
+            )
+            rooms = self._repairer.repair(rooms)
+            rooms = fill_gaps(rooms, self._w, self._l, strict=True)
+            report = self._validator.validate(rooms)
+
+        return LayoutPlan(
+            rooms=rooms,
+            plot_width=self._w,
+            plot_length=self._l,
+            template_id=template.id,
+            template_name=template.name,
+            variation=variation,
+            seed=seed,
+            warnings=report.all_messages(),
+        )
+
+    # --- 1 & 2: orientation and scaling -----------------------------------
+    def _orient_and_scale(self, template: FloorPlanTemplate) -> list[Rect]:
+        rooms = [
+            Rect(r.type, r.name, r.x, r.y, r.width, r.height) for r in template.rooms
+        ]
+        tw, tl = template.plot_width_ft, template.plot_length_ft
+
+        # A portrait template on a landscape plot (or vice versa) scales into
+        # absurdly stretched rooms; turning it a quarter first preserves the
+        # original proportions.
+        direct = abs((tw / tl) - (self._w / self._l))
+        rotated = abs((tl / tw) - (self._w / self._l))
+        if rotated < direct - 0.05:
+            rooms = [r.rotated() for r in rooms]
+            tw, tl = tl, tw
+
+        sx, sy = self._w / tw, self._l / tl
+        return [r.scaled(sx, sy).snapped() for r in rooms]
+
+    # --- 3: programme reconciliation --------------------------------------
+    def _reconcile_programme(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        rooms = self._retype_bedrooms(rooms)
+        rooms = self._drop_unwanted(rooms)
+        rooms = self._adjust_bathrooms(rooms, rng)
+        rooms = self._insert_missing(rooms, rng)
+        return rooms
+
+    def _retype_bedrooms(self, rooms: list[Rect]) -> list[Rect]:
+        """Match the template's bedrooms to the requested BHK, largest first."""
+        bedrooms = sorted(
+            [r for r in rooms if r.type.is_bedroom], key=lambda r: r.area, reverse=True
+        )
+        wanted = self._req.bedroom_rooms or list(BEDROOM_PRIORITY[: self._req.bhk.bedroom_count])
+        target = self._req.bhk.bedroom_count
+
+        # Too many bedrooms: the smallest become study or store space.
+        surplus = bedrooms[target:]
+        keep = bedrooms[:target]
+
+        renamed: dict[int, Rect] = {}
+        for index, room in enumerate(keep):
+            room_type = wanted[index] if index < len(wanted) else RoomType.BEDROOM
+            renamed[id(room)] = replace(room, type=room_type, name=self._label(room_type, index))
+
+        for room in surplus:
+            fallback = (
+                RoomType.STUDY_ROOM
+                if RoomType.STUDY_ROOM in self._req.rooms
+                else RoomType.STORE_ROOM
+            )
+            renamed[id(room)] = replace(room, type=fallback, name=fallback.label)
+
+        # Too few bedrooms: promote the largest non-essential room.
+        result = [renamed.get(id(r), r) for r in rooms]
+        deficit = target - len(keep)
+        if deficit > 0:
+            result = self._promote_to_bedrooms(result, deficit, len(keep))
+        return result
+
+    def _promote_to_bedrooms(
+        self, rooms: list[Rect], deficit: int, existing: int
+    ) -> list[Rect]:
+        candidates = sorted(
+            (
+                r
+                for r in rooms
+                if r.type
+                in {
+                    RoomType.STUDY_ROOM,
+                    RoomType.STORE_ROOM,
+                    RoomType.DINING_ROOM,
+                    RoomType.PASSAGE,
+                    RoomType.FOYER,
+                }
+                and r.area >= 90
+            ),
+            key=lambda r: r.area,
+            reverse=True,
+        )
+        promoted = {id(r) for r in candidates[:deficit]}
+        index = existing
+        result: list[Rect] = []
+        for room in rooms:
+            if id(room) in promoted:
+                room_type = BEDROOM_PRIORITY[min(index, len(BEDROOM_PRIORITY) - 1)]
+                result.append(replace(room, type=room_type, name=self._label(room_type, index)))
+                index += 1
+            else:
+                result.append(room)
+        return result
+
+    def _drop_unwanted(self, rooms: list[Rect]) -> list[Rect]:
+        requested = set(self._req.all_room_types)
+        kept: list[Rect] = []
+        removed: list[Rect] = []
+        for room in rooms:
+            if room.type in OPTIONAL_ROOMS and room.type not in requested:
+                removed.append(room)
+            else:
+                kept.append(room)
+
+        # The vacated area is absorbed by the largest adjacent room rather than
+        # left as a hole in the plan.
+        for room in removed:
+            kept = self._absorb(kept, room)
+        return kept
+
+    def _adjust_bathrooms(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        """Bring the bathroom counts in line with what was requested."""
+        for room_type, wanted in (
+            (RoomType.ATTACHED_BATHROOM, self._req.bathrooms.attached_count),
+            (RoomType.COMMON_BATHROOM, self._req.bathrooms.common_count),
+        ):
+            present = [r for r in rooms if r.type is room_type]
+            if len(present) > wanted:
+                for extra in sorted(present, key=lambda r: r.area)[: len(present) - wanted]:
+                    rooms = self._absorb([r for r in rooms if r is not extra], extra)
+            elif len(present) < wanted:
+                for _ in range(wanted - len(present)):
+                    rooms = self._carve(rooms, room_type, rng)
+        return rooms
+
+    def _insert_missing(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        present = {r.type for r in rooms}
+        for room_type in self._req.all_room_types:
+            if room_type.is_bathroom or room_type in present:
+                continue
+            rooms = self._carve(rooms, room_type, rng)
+            present.add(room_type)
+        return rooms
+
+    def _carve(self, rooms: list[Rect], room_type: RoomType, rng: random.Random) -> list[Rect]:
+        """Split a host room to make space for ``room_type``."""
+        hosts = CARVE_HOSTS.get(room_type, (RoomType.LIVING_ROOM, RoomType.PASSAGE))
+        needed = min_side(room_type)
+        wanted_area = min_area(room_type)
+
+        for host_type in (*hosts, None):
+            candidates = [
+                r
+                for r in rooms
+                if (host_type is None or r.type is host_type)
+                # The host must survive the split with a usable room left over.
+                and r.area >= wanted_area + min_area(r.type)
+                and min(r.width, r.height) >= needed + GRID
+                and self._is_valid_host(r, room_type)
+            ]
+            if not candidates:
+                continue
+
+            host = max(candidates, key=lambda r: r.area)
+            new_room, remainder = self._split(host, room_type, needed, rng)
+            if new_room is None or remainder is None:
+                continue
+            return [remainder if r is host else r for r in rooms] + [new_room]
+
+        logger.debug("Could not carve space for %s", room_type.value)
+        return rooms
+
+    def _is_valid_host(self, host: Rect, room_type: RoomType) -> bool:
+        """Outdoor space only makes sense against an external wall.
+
+        Without this a car park can end up landlocked in the middle of the
+        plan, which is the single most obvious way a generated layout betrays
+        itself as machine-made.
+        """
+        if not room_type.is_outdoor:
+            return True
+        return (
+            host.x <= 0.6
+            or host.y <= 0.6
+            or host.x2 >= self._w - 0.6
+            or host.y2 >= self._l - 0.6
+        )
+
+    def _split(
+        self, host: Rect, room_type: RoomType, needed: float, rng: random.Random
+    ) -> tuple[Rect | None, Rect | None]:
+        """Take a slice off the host, keeping both halves usable."""
+        host_floor = min_area(host.type)
+        target_area = max(min_area(room_type), needed * needed)
+        target_area = min(target_area, host.area - host_floor)
+        if target_area < needed * needed:
+            return None, None
+
+        horizontal = host.width >= host.height
+        # An outdoor slice must land on the external edge, not the inner one.
+        edge = self._external_edge(host) if room_type.is_outdoor else None
+        if edge in ("left", "right"):
+            horizontal = True
+        elif edge in ("bottom", "top"):
+            horizontal = False
+
+        if horizontal:
+            slice_w = snap(min(max(needed, target_area / host.height), host.width - needed))
+            if slice_w < needed or (host.width - slice_w) * host.height < host_floor:
+                return None, None
+            from_left = edge == "left" if edge in ("left", "right") else rng.random() < 0.5
+            if from_left:
+                new = Rect(room_type, room_type.label, host.x, host.y, slice_w, host.height)
+                rest = replace(host, x=host.x + slice_w, width=host.width - slice_w)
+            else:
+                new = Rect(
+                    room_type, room_type.label, host.x2 - slice_w, host.y, slice_w, host.height
+                )
+                rest = replace(host, width=host.width - slice_w)
+        else:
+            slice_h = snap(min(max(needed, target_area / host.width), host.height - needed))
+            if slice_h < needed or host.width * (host.height - slice_h) < host_floor:
+                return None, None
+            from_bottom = edge == "bottom" if edge in ("bottom", "top") else rng.random() < 0.5
+            if from_bottom:
+                new = Rect(room_type, room_type.label, host.x, host.y, host.width, slice_h)
+                rest = replace(host, y=host.y + slice_h, height=host.height - slice_h)
+            else:
+                new = Rect(
+                    room_type, room_type.label, host.x, host.y2 - slice_h, host.width, slice_h
+                )
+                rest = replace(host, height=host.height - slice_h)
+
+        return new, rest
+
+    def _external_edge(self, host: Rect) -> str | None:
+        """Which plot boundary this room sits against, if any."""
+        for edge, distance in (
+            ("bottom", host.y),
+            ("left", host.x),
+            ("right", self._w - host.x2),
+            ("top", self._l - host.y2),
+        ):
+            if distance <= 0.6:
+                return edge
+        return None
+
+    @staticmethod
+    def _absorb(rooms: list[Rect], vacated: Rect) -> list[Rect]:
+        """Extend the best-placed neighbour over a removed room's footprint.
+
+        ``vacated`` must already be excluded from ``rooms``, which makes its
+        footprint an uncovered pocket - exactly what the gap filler handles,
+        including its guards against handing a bathroom enough floor to turn
+        it into a corridor. Sharing that logic keeps one set of rules for
+        "who gets this space" instead of two that drift apart.
+        """
+        return absorb_vacated(rooms, vacated)
+
+    # --- 4: variation operators -------------------------------------------
+    def _apply_variation(
+        self, rooms: list[Rect], rng: random.Random, index: int
+    ) -> tuple[list[Rect], str]:
+        """Make this variation visibly distinct from its siblings.
+
+        ``index`` picks the primary operator so the four layouts in a response
+        never collapse onto the same transform, while ``rng`` decides the
+        details.
+        """
+        operators = [
+            ("Mirrored", self._mirror_x),
+            ("Rotated Entry", self._mirror_y),
+            ("Rebalanced Core", self._rebalance_core),
+            ("Reordered Wing", self._swap_same_zone),
+        ]
+        label, primary = operators[index % len(operators)]
+        rooms = primary(rooms, rng)
+
+        # A light secondary nudge keeps repeat runs from looking mechanical.
+        if rng.random() < 0.6:
+            rooms = self._shift_wall(rooms, rng)
+
+        return rooms, label
+
+    def _mirror_x(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        return [r.mirrored_x(self._w) for r in rooms]
+
+    def _mirror_y(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        return [r.mirrored_y(self._l) for r in rooms]
+
+    def _rebalance_core(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        """Grow the living room into a neighbour, shrinking that neighbour."""
+        living = next((r for r in rooms if r.type is RoomType.LIVING_ROOM), None)
+        if living is None:
+            return rooms
+
+        neighbours = [
+            r
+            for r in rooms
+            if r is not living
+            and r.shared_wall_length(living) > 3.0
+            and r.type not in {RoomType.PARKING, RoomType.GARDEN}
+            and min(r.width, r.height) > min_side(r.type) + 2.0
+        ]
+        if not neighbours:
+            return rooms
+
+        donor = rng.choice(neighbours)
+        shift = snap(min(2.5, min(donor.width, donor.height) - min_side(donor.type)))
+        if shift < GRID:
+            return rooms
+
+        result: list[Rect] = []
+        for room in rooms:
+            if room is donor:
+                if abs(donor.x2 - living.x) < 1.0:
+                    result.append(replace(donor, width=donor.width - shift))
+                elif abs(living.x2 - donor.x) < 1.0:
+                    result.append(replace(donor, x=donor.x + shift, width=donor.width - shift))
+                elif abs(donor.y2 - living.y) < 1.0:
+                    result.append(replace(donor, height=donor.height - shift))
+                else:
+                    result.append(replace(donor, y=donor.y + shift, height=donor.height - shift))
+            elif room is living:
+                if abs(donor.x2 - living.x) < 1.0:
+                    result.append(replace(living, x=living.x - shift, width=living.width + shift))
+                elif abs(living.x2 - donor.x) < 1.0:
+                    result.append(replace(living, width=living.width + shift))
+                elif abs(donor.y2 - living.y) < 1.0:
+                    result.append(replace(living, y=living.y - shift, height=living.height + shift))
+                else:
+                    result.append(replace(living, height=living.height + shift))
+            else:
+                result.append(room)
+        return result
+
+    @staticmethod
+    def _swap_same_zone(rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        """Exchange the positions of two similarly sized rooms of the same kind."""
+        groups: dict[str, list[Rect]] = {}
+        for room in rooms:
+            if room.type.is_bedroom:
+                groups.setdefault("bedroom", []).append(room)
+            elif room.type.is_bathroom:
+                groups.setdefault("bathroom", []).append(room)
+
+        candidates = [g for g in groups.values() if len(g) >= 2]
+        if not candidates:
+            return rooms
+
+        group = rng.choice(candidates)
+        a, b = rng.sample(group, 2)
+        swapped = {
+            id(a): replace(a, type=b.type, name=b.name),
+            id(b): replace(b, type=a.type, name=a.name),
+        }
+        return [swapped.get(id(r), r) for r in rooms]
+
+    @staticmethod
+    def _shift_wall(rooms: list[Rect], rng: random.Random) -> list[Rect]:
+        """Move one shared wall line, resizing both rooms that meet on it."""
+        pairs = [
+            (a, b)
+            for i, a in enumerate(rooms)
+            for b in rooms[i + 1 :]
+            if abs(a.x2 - b.x) < 0.6 and min(a.y2, b.y2) - max(a.y, b.y) > 4.0
+        ]
+        if not pairs:
+            return rooms
+
+        a, b = rng.choice(pairs)
+        headroom = min(a.width - min_side(a.type), b.width - min_side(b.type))
+        if headroom < 1.0:
+            return rooms
+
+        shift = snap(rng.uniform(-1.0, 1.0) * min(2.0, headroom))
+        if abs(shift) < GRID:
+            return rooms
+
+        updated = {
+            id(a): replace(a, width=a.width + shift),
+            id(b): replace(b, x=b.x + shift, width=b.width - shift),
+        }
+        return [updated.get(id(r), r) for r in rooms]
+
+    # --- 5: finishing ------------------------------------------------------
+    def _enforce_minimum_sizes(self, rooms: list[Rect]) -> list[Rect]:
+        """Drop optional rooms that repair squeezed below a usable size.
+
+        Both tests matter: a room can hold enough square feet and still be a
+        3 ft ribbon that no one could stand in, and a ribbon labelled "Balcony"
+        is exactly the kind of artefact that gives a generated plan away.
+        """
+        kept: list[Rect] = []
+        for room in rooms:
+            if room.type not in OPTIONAL_ROOMS:
+                kept.append(room)
+                continue
+
+            too_small = room.area < min_side(room.type) ** 2 * 0.7
+            too_thin = min(room.width, room.height) < min_side(room.type) * 0.8
+            too_long = room.aspect > 4.2
+            if too_small or too_thin or too_long:
+                logger.debug(
+                    "Dropping %s (%.1f x %.1f ft) - below usable proportions",
+                    room.name,
+                    room.width,
+                    room.height,
+                )
+                kept = self._absorb(kept, room) if kept else kept
+                continue
+            kept.append(room)
+        return kept
+
+    @staticmethod
+    def _label(room_type: RoomType, index: int) -> str:
+        if room_type is RoomType.BEDROOM:
+            return f"Bedroom {index + 1}"
+        return room_type.label

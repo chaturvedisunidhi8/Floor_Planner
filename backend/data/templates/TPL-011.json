@@ -1,0 +1,203 @@
+{
+  "id": "TPL-011",
+  "name": "40x60 Modern Three Bedroom Villa",
+  "bhk": "3BHK",
+  "plot_width_ft": 40.0,
+  "plot_length_ft": 60.0,
+  "plot_shape": "rectangle",
+  "style": "modern",
+  "rooms": [
+    {
+      "type": "store_room",
+      "name": "Dress",
+      "x": 0.0,
+      "y": 44.0,
+      "width": 7.0,
+      "height": 8.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 0.0,
+      "y": 52.0,
+      "width": 7.0,
+      "height": 8.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "Bed Room 1",
+      "x": 7.0,
+      "y": 44.0,
+      "width": 15.0,
+      "height": 16.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bed Room 2",
+      "x": 22.0,
+      "y": 44.0,
+      "width": 12.0,
+      "height": 16.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 34.0,
+      "y": 44.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 34.0,
+      "y": 52.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 0.0,
+      "y": 36.0,
+      "width": 7.0,
+      "height": 8.0
+    },
+    {
+      "type": "store_room",
+      "name": "Dress",
+      "x": 7.0,
+      "y": 36.0,
+      "width": 7.0,
+      "height": 8.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living Hall",
+      "x": 14.0,
+      "y": 28.0,
+      "width": 20.0,
+      "height": 16.0
+    },
+    {
+      "type": "study_room",
+      "name": "Study",
+      "x": 34.0,
+      "y": 36.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Toilet",
+      "x": 34.0,
+      "y": 28.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Bed Room 3",
+      "x": 0.0,
+      "y": 20.0,
+      "width": 14.0,
+      "height": 16.0
+    },
+    {
+      "type": "passage",
+      "name": "Passage",
+      "x": 0.0,
+      "y": 14.0,
+      "width": 14.0,
+      "height": 6.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 14.0,
+      "y": 14.0,
+      "width": 12.0,
+      "height": 14.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Store",
+      "x": 26.0,
+      "y": 20.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "wash_area",
+      "name": "Wash",
+      "x": 26.0,
+      "y": 14.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "staircase",
+      "name": "Stairs",
+      "x": 34.0,
+      "y": 14.0,
+      "width": 6.0,
+      "height": 14.0
+    },
+    {
+      "type": "parking",
+      "name": "Parking",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 26.0,
+      "height": 14.0
+    },
+    {
+      "type": "garden",
+      "name": "Garden",
+      "x": 26.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 14.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "wash_area",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    }
+  ],
+  "description": "2400 sq ft single-storey villa. Every bedroom gets its own dress area and toilet, the living hall sits at the crossing of both circulation axes, and the service zone of kitchen, wash and utility is pushed to the rear away from the parking court.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "3BHK(7).jpeg",
+    "facing": "east",
+    "floors": 1,
+    "built_up_sqft": 1792.0,
+    "tags": [
+      "3BHK",
+      "modern",
+      "east"
+    ]
+  }
+}

@@ -1,0 +1,239 @@
+{
+  "id": "TPL-020",
+  "name": "50x60 Four Bedroom Luxury Villa",
+  "bhk": "4BHK",
+  "plot_width_ft": 50.0,
+  "plot_length_ft": 60.0,
+  "plot_shape": "rectangle",
+  "style": "luxury",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Master Bedroom",
+      "x": 0.0,
+      "y": 44.0,
+      "width": 18.0,
+      "height": 16.0
+    },
+    {
+      "type": "passage",
+      "name": "Passage",
+      "x": 18.0,
+      "y": 44.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 18.0,
+      "y": 52.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 26.0,
+      "y": 52.0,
+      "width": 10.0,
+      "height": 8.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 26.0,
+      "y": 44.0,
+      "width": 10.0,
+      "height": 8.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Children Bedroom",
+      "x": 36.0,
+      "y": 44.0,
+      "width": 14.0,
+      "height": 16.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living Room",
+      "x": 14.0,
+      "y": 24.0,
+      "width": 22.0,
+      "height": 20.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining Room",
+      "x": 0.0,
+      "y": 26.0,
+      "width": 14.0,
+      "height": 18.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Guest Bedroom",
+      "x": 36.0,
+      "y": 28.0,
+      "width": 14.0,
+      "height": 16.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 36.0,
+      "y": 20.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "pooja_room",
+      "name": "Pooja Room",
+      "x": 44.0,
+      "y": 20.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 0.0,
+      "y": 16.0,
+      "width": 14.0,
+      "height": 10.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility",
+      "x": 0.0,
+      "y": 10.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "store_room",
+      "name": "Store",
+      "x": 8.0,
+      "y": 10.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "bedroom",
+      "name": "Bedroom 4",
+      "x": 14.0,
+      "y": 10.0,
+      "width": 14.0,
+      "height": 14.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 28.0,
+      "y": 10.0,
+      "width": 8.0,
+      "height": 6.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 28.0,
+      "y": 16.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Common Bath",
+      "x": 36.0,
+      "y": 12.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "wash_area",
+      "name": "Wash Area",
+      "x": 44.0,
+      "y": 12.0,
+      "width": 6.0,
+      "height": 8.0
+    },
+    {
+      "type": "parking",
+      "name": "Parking",
+      "x": 36.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 12.0
+    },
+    {
+      "type": "garden",
+      "name": "Lawn",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 36.0,
+      "height": 10.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "store_room",
+      "relation": "adjacent"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "passage",
+      "target": "living_room",
+      "relation": "connected"
+    }
+  ],
+  "description": "Large villa floor with a 22x20 ft living room at the centre of a cross plan. All four bedrooms have attached bathrooms on external walls, a formal dining sits beside the kitchen and utility bay, and covered parking flanks the front lawn.",
+  "metadata": {
+    "source": "architect-standard",
+    "reference_image": null,
+    "facing": "north",
+    "floors": 1,
+    "built_up_sqft": 2392.0,
+    "tags": [
+      "4BHK",
+      "luxury",
+      "north"
+    ]
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "id": "TPL-012",
+  "name": "48x52 Four Bedroom Family House",
+  "bhk": "4BHK",
+  "plot_width_ft": 48.0,
+  "plot_length_ft": 52.0,
+  "plot_shape": "rectangle",
+  "style": "traditional",
+  "rooms": [
+    {
+      "type": "attached_bathroom",
+      "name": "Bath / WC",
+      "x": 0.0,
+      "y": 44.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Bath / WC",
+      "x": 0.0,
+      "y": 36.0,
+      "width": 8.0,
+      "height": 8.0
+    },
+    {
+      "type": "passage",
+      "name": "Passage",
+      "x": 8.0,
+      "y": 36.0,
+      "width": 6.0,
+      "height": 16.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "Bedroom 1",
+      "x": 14.0,
+      "y": 36.0,
+      "width": 17.0,
+      "height": 16.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 2",
+      "x": 31.0,
+      "y": 36.0,
+      "width": 17.0,
+      "height": 16.0
+    },
+    {
+      "type": "store_room",
+      "name": "Store",
+      "x": 0.0,
+      "y": 22.0,
+      "width": 8.0,
+      "height": 7.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Bath / WC",
+      "x": 0.0,
+      "y": 29.0,
+      "width": 8.0,
+      "height": 7.0
+    },
+    {
+      "type": "bedroom",
+      "name": "Bedroom 3",
+      "x": 8.0,
+      "y": 22.0,
+      "width": 14.0,
+      "height": 14.0
+    },
+    {
+      "type": "living_room",
+      "name": "Hall",
+      "x": 22.0,
+      "y": 20.0,
+      "width": 16.0,
+      "height": 16.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Bath / WC",
+      "x": 38.0,
+      "y": 28.0,
+      "width": 10.0,
+      "height": 8.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Bath / WC",
+      "x": 38.0,
+      "y": 20.0,
+      "width": 10.0,
+      "height": 8.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Guestroom",
+      "x": 0.0,
+      "y": 8.0,
+      "width": 16.0,
+      "height": 14.0
+    },
+    {
+      "type": "study_room",
+      "name": "Drawing",
+      "x": 16.0,
+      "y": 8.0,
+      "width": 16.0,
+      "height": 12.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 32.0,
+      "y": 8.0,
+      "width": 16.0,
+      "height": 12.0
+    },
+    {
+      "type": "balcony",
+      "name": "Varanda",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 48.0,
+      "height": 8.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    }
+  ],
+  "description": "Four bedroom house built around a tall central hall. Two master suites take the rear corners, a third bedroom and the guest room sit on the left flank, and the drawing room and kitchen line the front verandah that runs the full width.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "4BHK(2).jpeg",
+    "facing": "south",
+    "floors": 1,
+    "built_up_sqft": 2100.0,
+    "tags": [
+      "4BHK",
+      "traditional",
+      "south"
+    ]
+  }
+}

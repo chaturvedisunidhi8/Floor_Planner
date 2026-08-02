@@ -1,0 +1,168 @@
+{
+  "id": "TPL-007",
+  "name": "50x60 Three Bedroom Bungalow",
+  "bhk": "3BHK",
+  "plot_width_ft": 50.0,
+  "plot_length_ft": 60.0,
+  "plot_shape": "rectangle",
+  "style": "luxury",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Bedroom",
+      "x": 0.0,
+      "y": 45.0,
+      "width": 14.0,
+      "height": 15.0
+    },
+    {
+      "type": "garden",
+      "name": "Backyard",
+      "x": 14.0,
+      "y": 50.0,
+      "width": 18.0,
+      "height": 10.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom",
+      "x": 32.0,
+      "y": 45.0,
+      "width": 18.0,
+      "height": 15.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 0.0,
+      "y": 32.0,
+      "width": 14.0,
+      "height": 13.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 14.0,
+      "y": 30.0,
+      "width": 18.0,
+      "height": 20.0
+    },
+    {
+      "type": "study_room",
+      "name": "Drawing / Office",
+      "x": 32.0,
+      "y": 28.0,
+      "width": 18.0,
+      "height": 17.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living",
+      "x": 14.0,
+      "y": 10.0,
+      "width": 18.0,
+      "height": 20.0
+    },
+    {
+      "type": "guest_bedroom",
+      "name": "Bedroom",
+      "x": 0.0,
+      "y": 14.0,
+      "width": 14.0,
+      "height": 18.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Bath",
+      "x": 0.0,
+      "y": 8.0,
+      "width": 7.0,
+      "height": 6.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Bath",
+      "x": 7.0,
+      "y": 8.0,
+      "width": 7.0,
+      "height": 6.0
+    },
+    {
+      "type": "balcony",
+      "name": "Sitout",
+      "x": 14.0,
+      "y": 0.0,
+      "width": 10.0,
+      "height": 10.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 24.0,
+      "y": 0.0,
+      "width": 8.0,
+      "height": 10.0
+    },
+    {
+      "type": "parking",
+      "name": "Parking",
+      "x": 32.0,
+      "y": 0.0,
+      "width": 18.0,
+      "height": 28.0
+    },
+    {
+      "type": "garden",
+      "name": "Garden",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 14.0,
+      "height": 8.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "guest_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    },
+    {
+      "source": "living_room",
+      "target": "parking",
+      "relation": "adjacent"
+    }
+  ],
+  "description": "Generous bungalow with a formal drawing/office off the entrance, a double-volume dining core lit by the rear backyard, and three bedrooms placed on three different corners for privacy. Two-car parking and a front sitout complete the street face.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "3BHK(1).jpeg",
+    "facing": "south",
+    "floors": 1,
+    "built_up_sqft": 2104.0,
+    "tags": [
+      "3BHK",
+      "luxury",
+      "south"
+    ]
+  }
+}

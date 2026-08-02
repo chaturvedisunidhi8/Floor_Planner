@@ -1,0 +1,110 @@
+{
+  "id": "TPL-001",
+  "name": "Compact Single Bedroom Cottage",
+  "bhk": "1BHK",
+  "plot_width_ft": 26.0,
+  "plot_length_ft": 29.0,
+  "plot_shape": "square",
+  "style": "traditional",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Bed Room",
+      "x": 0.0,
+      "y": 19.0,
+      "width": 13.0,
+      "height": 10.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living Hall",
+      "x": 13.0,
+      "y": 7.0,
+      "width": 13.0,
+      "height": 14.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 13.0,
+      "y": 21.0,
+      "width": 13.0,
+      "height": 8.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "W.C.",
+      "x": 0.0,
+      "y": 15.5,
+      "width": 6.0,
+      "height": 3.5
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Bath",
+      "x": 6.0,
+      "y": 15.5,
+      "width": 7.0,
+      "height": 3.5
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 0.0,
+      "y": 3.0,
+      "width": 13.0,
+      "height": 12.5
+    },
+    {
+      "type": "balcony",
+      "name": "Verandah",
+      "x": 13.0,
+      "y": 0.0,
+      "width": 13.0,
+      "height": 7.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Kitchen Otta",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 13.0,
+      "height": 3.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    }
+  ],
+  "description": "Single bedroom cottage with a double-height living hall running the full depth of the right bay, an internal staircase to the first floor, and a service spine of kitchen, bath and WC along the left wall. A shallow verandah screens the entrance.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "1BHK(1).jpeg",
+    "facing": "south",
+    "floors": 1,
+    "built_up_sqft": 663.0,
+    "tags": [
+      "1BHK",
+      "traditional",
+      "south"
+    ]
+  }
+}

@@ -1,0 +1,157 @@
+{
+  "id": "TPL-006",
+  "name": "Two Bedroom Apartment Unit with Twin Balconies",
+  "bhk": "2BHK",
+  "plot_width_ft": 30.0,
+  "plot_length_ft": 40.0,
+  "plot_shape": "rectangle",
+  "style": "modern",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Bedroom 1",
+      "x": 0.0,
+      "y": 28.0,
+      "width": 13.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "L/B",
+      "x": 13.0,
+      "y": 34.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 19.0,
+      "y": 34.0,
+      "width": 11.0,
+      "height": 6.0
+    },
+    {
+      "type": "living_room",
+      "name": "Hall",
+      "x": 13.0,
+      "y": 22.0,
+      "width": 17.0,
+      "height": 12.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 0.0,
+      "y": 18.0,
+      "width": 13.0,
+      "height": 10.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Toilet",
+      "x": 13.0,
+      "y": 16.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "passage",
+      "name": "Passage",
+      "x": 19.0,
+      "y": 16.0,
+      "width": 5.0,
+      "height": 6.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 24.0,
+      "y": 16.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 2",
+      "x": 0.0,
+      "y": 4.0,
+      "width": 13.0,
+      "height": 14.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 13.0,
+      "y": 4.0,
+      "width": 11.0,
+      "height": 12.0
+    },
+    {
+      "type": "store_room",
+      "name": "Store",
+      "x": 24.0,
+      "y": 4.0,
+      "width": 6.0,
+      "height": 12.0
+    },
+    {
+      "type": "wash_area",
+      "name": "Wash Area",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 30.0,
+      "height": 4.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "wash_area",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "store_room",
+      "relation": "adjacent"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    },
+    {
+      "source": "passage",
+      "target": "living_room",
+      "relation": "connected"
+    }
+  ],
+  "description": "Apartment unit lifted from a twin-unit floor plate. A central passage separates the sleeping wing from the living wing, the hall opens onto a rear balcony, and the kitchen sits beside the store with the wash area running the front edge.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "2BHK(6).jpeg",
+    "facing": "west",
+    "floors": 1,
+    "built_up_sqft": 1134.0,
+    "tags": [
+      "2BHK",
+      "modern",
+      "west"
+    ]
+  }
+}

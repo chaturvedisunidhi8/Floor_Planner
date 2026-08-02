@@ -1,0 +1,131 @@
+{
+  "id": "TPL-005",
+  "name": "900 sq ft Two Bedroom Comfort Apartment",
+  "bhk": "2BHK",
+  "plot_width_ft": 30.0,
+  "plot_length_ft": 30.0,
+  "plot_shape": "square",
+  "style": "modern",
+  "rooms": [
+    {
+      "type": "children_bedroom",
+      "name": "Bedroom 2",
+      "x": 0.0,
+      "y": 17.0,
+      "width": 11.0,
+      "height": 13.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Common Toilet",
+      "x": 0.0,
+      "y": 11.0,
+      "width": 11.0,
+      "height": 6.0
+    },
+    {
+      "type": "store_room",
+      "name": "Store",
+      "x": 0.0,
+      "y": 6.0,
+      "width": 11.0,
+      "height": 5.0
+    },
+    {
+      "type": "foyer",
+      "name": "Foyer",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 11.0,
+      "height": 6.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Toilet",
+      "x": 11.0,
+      "y": 24.0,
+      "width": 9.0,
+      "height": 6.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living",
+      "x": 11.0,
+      "y": 11.0,
+      "width": 9.0,
+      "height": 13.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 11.0,
+      "y": 0.0,
+      "width": 9.0,
+      "height": 11.0
+    },
+    {
+      "type": "master_bedroom",
+      "name": "Master Bedroom",
+      "x": 20.0,
+      "y": 18.0,
+      "width": 10.0,
+      "height": 12.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 20.0,
+      "y": 9.0,
+      "width": 10.0,
+      "height": 9.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 20.0,
+      "y": 0.0,
+      "width": 10.0,
+      "height": 9.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "kitchen",
+      "target": "dining_room",
+      "relation": "connected"
+    },
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "children_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "balcony",
+      "relation": "connected"
+    }
+  ],
+  "description": "Square apartment footprint organised in three bays. Entry foyer and store screen the living room from the door, the living-dining runs through the middle bay to a balcony, and the master bedroom claims the far corner beside the kitchen bay.",
+  "metadata": {
+    "source": "traced-reference",
+    "reference_image": "2BHK(5).jpeg",
+    "facing": "north",
+    "floors": 1,
+    "built_up_sqft": 801.0,
+    "tags": [
+      "2BHK",
+      "modern",
+      "north"
+    ]
+  }
+}

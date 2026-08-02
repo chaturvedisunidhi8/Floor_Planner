@@ -1,0 +1,14 @@
+__pycache__
+*.py[cod]
+.venv
+venv
+.pytest_cache
+.mypy_cache
+.ruff_cache
+storage/images/*
+storage/index/*
+*.sqlite3
+tests
+.env
+.env.*
+!.env.example

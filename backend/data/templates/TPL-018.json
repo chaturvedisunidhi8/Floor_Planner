@@ -1,0 +1,134 @@
+{
+  "id": "TPL-018",
+  "name": "24x40 Minimal Two Bedroom",
+  "bhk": "2BHK",
+  "plot_width_ft": 24.0,
+  "plot_length_ft": 40.0,
+  "plot_shape": "rectangle",
+  "style": "minimal",
+  "rooms": [
+    {
+      "type": "master_bedroom",
+      "name": "Master Bedroom",
+      "x": 0.0,
+      "y": 28.0,
+      "width": 12.0,
+      "height": 12.0
+    },
+    {
+      "type": "attached_bathroom",
+      "name": "Attached Bath",
+      "x": 12.0,
+      "y": 34.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "utility_room",
+      "name": "Utility",
+      "x": 18.0,
+      "y": 34.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "kitchen",
+      "name": "Kitchen",
+      "x": 12.0,
+      "y": 24.0,
+      "width": 12.0,
+      "height": 10.0
+    },
+    {
+      "type": "children_bedroom",
+      "name": "Children Bedroom",
+      "x": 0.0,
+      "y": 16.0,
+      "width": 12.0,
+      "height": 12.0
+    },
+    {
+      "type": "living_room",
+      "name": "Living Room",
+      "x": 12.0,
+      "y": 10.0,
+      "width": 12.0,
+      "height": 14.0
+    },
+    {
+      "type": "dining_room",
+      "name": "Dining",
+      "x": 0.0,
+      "y": 6.0,
+      "width": 12.0,
+      "height": 10.0
+    },
+    {
+      "type": "common_bathroom",
+      "name": "Common Bath",
+      "x": 12.0,
+      "y": 4.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "staircase",
+      "name": "Staircase",
+      "x": 18.0,
+      "y": 4.0,
+      "width": 6.0,
+      "height": 6.0
+    },
+    {
+      "type": "balcony",
+      "name": "Balcony",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 12.0,
+      "height": 6.0
+    },
+    {
+      "type": "wash_area",
+      "name": "Wash Area",
+      "x": 12.0,
+      "y": 0.0,
+      "width": 12.0,
+      "height": 4.0
+    }
+  ],
+  "relationships": [
+    {
+      "source": "dining_room",
+      "target": "living_room",
+      "relation": "connected"
+    },
+    {
+      "source": "kitchen",
+      "target": "utility_room",
+      "relation": "connected"
+    },
+    {
+      "source": "master_bedroom",
+      "target": "attached_bathroom",
+      "relation": "attached"
+    },
+    {
+      "source": "living_room",
+      "target": "staircase",
+      "relation": "adjacent"
+    }
+  ],
+  "description": "Pared-back two bedroom plan with a single straight corridor. Bedrooms occupy the quiet rear, the living room sits centrally between the dining and the balcony, and all wet areas are stacked in one vertical band for an economical service core.",
+  "metadata": {
+    "source": "architect-standard",
+    "reference_image": null,
+    "facing": "north",
+    "floors": 1,
+    "built_up_sqft": 888.0,
+    "tags": [
+      "2BHK",
+      "minimal",
+      "north"
+    ]
+  }
+}
