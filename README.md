@@ -83,7 +83,7 @@ python -m venv .venv && source .venv/Scripts/activate   # Windows: .venv\Scripts
 pip install -r requirements-dev.txt
 python scripts/author_templates.py   # writes data/templates/TPL-XXX.json
 python scripts/seed_database.py      # loads the DB and builds the FAISS index
-uvicorn app.main:app --reload
+python uvicorn app.main:app --reload
 ```
 
 Frontend, in a second terminal:
