@@ -20,6 +20,7 @@ dist/
 .env
 .env.*
 !.env.example
+.env.example
 
 # Runtime artifacts
 backend/storage/images/*

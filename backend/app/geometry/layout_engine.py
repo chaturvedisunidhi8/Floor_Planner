@@ -36,6 +36,7 @@ from app.geometry.validator import (
     fit_to_plot,
     merge_adjacent_passages,
     rebalance_room_sizes,
+    resize_to_targets,
 )
 from app.schemas.enums import RoomType
 from app.schemas.requirements import FloorPlanRequirements
@@ -114,6 +115,9 @@ class LayoutEngine:
         self._req = requirements
         self._w = requirements.plot.width_ft
         self._l = requirements.plot.length_ft
+        # Empty unless the client sized the rooms itself, in which case every
+        # sizing decision below aims at these instead of the generic bands.
+        self._targets = requirements.area_targets
         self._validator = LayoutValidator(self._w, self._l)
         self._repairer = LayoutRepairer(self._w, self._l)
 
@@ -145,6 +149,10 @@ class LayoutEngine:
         rooms = rebalance_room_sizes(rooms)
         rooms = self._repairer.repair(rooms)
         rooms = fill_gaps(rooms, self._w, self._l, strict=True)
+        # The client's own sizes have the final word: this runs after the
+        # generic bands have had their say so nothing can cap a room back down
+        # below what was asked for.
+        rooms = resize_to_targets(rooms, self._targets)
 
         report = self._validator.validate(rooms)
         if not report.ok:
@@ -304,6 +312,9 @@ class LayoutEngine:
         """Split a host room to make space for ``room_type``."""
         hosts = CARVE_HOSTS.get(room_type, (RoomType.LIVING_ROOM, RoomType.PASSAGE))
         needed = min_side(room_type)
+        # The host must survive giving up the room's *minimum*; the slice itself
+        # then aims for the requested size, so a room the client sized generously
+        # does not get carved out at the bare minimum and grown back later.
         wanted_area = min_area(room_type)
 
         for host_type in (*hosts, None):
@@ -349,7 +360,7 @@ class LayoutEngine:
     ) -> tuple[Rect | None, Rect | None]:
         """Take a slice off the host, keeping both halves usable."""
         host_floor = min_area(host.type)
-        target_area = max(min_area(room_type), needed * needed)
+        target_area = max(self._wanted_area(room_type), needed * needed)
         target_area = min(target_area, host.area - host_floor)
         if target_area < needed * needed:
             return None, None
@@ -390,6 +401,10 @@ class LayoutEngine:
                 rest = replace(host, height=host.height - slice_h)
 
         return new, rest
+
+    def _wanted_area(self, room_type: RoomType) -> float:
+        """The size to aim for: what the client asked for, or the generic minimum."""
+        return max(min_area(room_type), self._targets.get(room_type, 0.0))
 
     def _external_edge(self, host: Rect) -> str | None:
         """Which plot boundary this room sits against, if any."""

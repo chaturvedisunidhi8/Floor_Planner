@@ -21,6 +21,47 @@ from app.schemas.enums import (
 MIN_PLOT_FT = 15
 MAX_PLOT_FT = 100
 
+#: Bounds for a single room edge. Wide enough for a walk-in pooja room at the
+#: bottom and a double-height living room at the top.
+MIN_ROOM_FT = 5
+MAX_ROOM_FT = 40
+
+
+class RoomDimensions(BaseModel):
+    """The size the client asked a room to be, in feet.
+
+    Advisory rather than binding: the geometry engine treats these as targets
+    and may adjust them slightly to make the rooms tile the plot.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    length_ft: float = Field(..., ge=MIN_ROOM_FT, le=MAX_ROOM_FT)
+    width_ft: float = Field(..., ge=MIN_ROOM_FT, le=MAX_ROOM_FT)
+
+    @property
+    def area_sqft(self) -> float:
+        return round(self.length_ft * self.width_ft, 2)
+
+    def describe(self) -> str:
+        return f"{self.length_ft:g}x{self.width_ft:g} ft"
+
+
+#: Sensible starting sizes for every room the wizard offers. The frontend seeds
+#: its steppers from these via ``GET /options``, so the table lives here only.
+ROOM_DEFAULT_DIMENSIONS: dict[RoomType, RoomDimensions] = {
+    RoomType.LIVING_ROOM: RoomDimensions(length_ft=16, width_ft=14),
+    RoomType.DINING_ROOM: RoomDimensions(length_ft=12, width_ft=10),
+    RoomType.KITCHEN: RoomDimensions(length_ft=10, width_ft=10),
+    RoomType.MASTER_BEDROOM: RoomDimensions(length_ft=14, width_ft=12),
+    RoomType.GUEST_BEDROOM: RoomDimensions(length_ft=12, width_ft=11),
+    RoomType.CHILDREN_BEDROOM: RoomDimensions(length_ft=11, width_ft=10),
+    RoomType.STUDY_ROOM: RoomDimensions(length_ft=10, width_ft=8),
+    RoomType.POOJA_ROOM: RoomDimensions(length_ft=8, width_ft=6),
+    RoomType.UTILITY_ROOM: RoomDimensions(length_ft=8, width_ft=6),
+    RoomType.STORE_ROOM: RoomDimensions(length_ft=7, width_ft=6),
+}
+
 
 class PlotDetails(BaseModel):
     """Plot geometry in feet - the hard constraint every layout must respect."""
@@ -82,6 +123,10 @@ class FloorPlanRequirements(BaseModel):
     plot: PlotDetails
     bhk: BHKType
     rooms: list[RoomType] = Field(default_factory=list, description="Rooms explicitly requested")
+    room_dimensions: dict[RoomType, RoomDimensions] = Field(
+        default_factory=dict,
+        description="Per-room size targets keyed by room. Omitted rooms are sized by the engine.",
+    )
     bathrooms: BathroomRequirements = Field(default_factory=BathroomRequirements)
     features: list[RoomType] = Field(default_factory=list, description="Balcony/parking/garden/...")
     style: InteriorStyle = InteriorStyle.MODERN
@@ -104,8 +149,12 @@ class FloorPlanRequirements(BaseModel):
         # The BHK count is authoritative over individual bedroom ticks.
         rooms = self._reconcile_bedrooms(rooms)
 
+        # A size for a room nobody asked for would just confuse the engine.
+        dimensions = {r: d for r, d in self.room_dimensions.items() if r in rooms}
+
         object.__setattr__(self, "rooms", rooms)
         object.__setattr__(self, "features", features)
+        object.__setattr__(self, "room_dimensions", dimensions)
         return self
 
     def _reconcile_bedrooms(self, rooms: list[RoomType]) -> list[RoomType]:
@@ -148,6 +197,22 @@ class FloorPlanRequirements(BaseModel):
         result += [RoomType.COMMON_BATHROOM] * self.bathrooms.common_count
         result += list(self.features)
         return result
+
+    @property
+    def area_targets(self) -> dict[RoomType, float]:
+        """Requested floor area per room - what the geometry engine aims for."""
+        return {room: dims.area_sqft for room, dims in self.room_dimensions.items()}
+
+    @property
+    def requested_area_sqft(self) -> float:
+        """Total area the client allocated to rooms, excluding walls and circulation."""
+        return round(sum(d.area_sqft for d in self.room_dimensions.values()), 2)
+
+    def describe_dimensions(self) -> str:
+        """``living_room 16x14 ft, kitchen 10x10 ft`` - empty when none were sent."""
+        return ", ".join(
+            f"{room.value} {dims.describe()}" for room, dims in self.room_dimensions.items()
+        )
 
     @property
     def has_parking(self) -> bool:

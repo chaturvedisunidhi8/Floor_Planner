@@ -322,6 +322,88 @@ def rebalance_room_sizes(rooms: list[Rect], passes: int = 3) -> list[Rect]:
     return result
 
 
+def resize_to_targets(
+    rooms: list[Rect], targets: dict[RoomType, float], passes: int = 6
+) -> list[Rect]:
+    """Nudge rooms toward the floor areas the client asked for.
+
+    ``targets`` maps a room type to the area in square feet the user entered in
+    the wizard. Area is moved across shared walls exactly as
+    :func:`rebalance_room_sizes` does, so the plan stays gap-free and
+    overlap-free; a room only grows when a flush neighbour is above *its* own
+    target (or has spare over its architectural minimum) and can afford to give.
+
+    Best effort by design: on a plot too small for everything requested, rooms
+    end up proportionally short rather than the layout failing.
+    """
+    if not targets:
+        return rooms
+
+    result = list(rooms)
+    for _ in range(passes):
+        needy = sorted(
+            (r for r in result if _target_gap(r, targets) > TARGET_TOLERANCE),
+            key=lambda r: _target_gap(r, targets),
+            reverse=True,
+        )
+        if not needy:
+            break
+
+        moved = False
+        for short_room in needy:
+            donor = _pick_target_donor(result, short_room, targets)
+            if donor is None:
+                continue
+            updated = _move_area(
+                result,
+                donor,
+                short_room,
+                wanted_area=_target_gap(short_room, targets),
+                spare_area=_target_surplus(donor, targets),
+            )
+            if updated is not None:
+                result = updated
+                moved = True
+                break
+        if not moved:
+            break
+
+    return result
+
+
+#: Below this many square feet a room is close enough to what was asked for.
+TARGET_TOLERANCE = 4.0
+
+
+def _target_gap(room: Rect, targets: dict[RoomType, float]) -> float:
+    """How far below its requested area the room is (0 when at or above it)."""
+    target = targets.get(room.type)
+    return max(0.0, target - room.area) if target else 0.0
+
+
+def _target_surplus(room: Rect, targets: dict[RoomType, float]) -> float:
+    """Area the room can give up: down to its request, or to its own minimum."""
+    floor = targets.get(room.type, min_area(room.type))
+    return room.area - max(floor, min_area(room.type) * 0.9)
+
+
+def _pick_target_donor(
+    rooms: list[Rect], needy: Rect, targets: dict[RoomType, float]
+) -> Rect | None:
+    """The flush neighbour with the most area to spare above its own target."""
+    candidates = [
+        (room, _target_surplus(room, targets))
+        for room in rooms
+        if room is not needy
+        and room.shared_wall_length(needy, tolerance=0.3) > 0
+        and _flush(room, needy)
+    ]
+    affordable = [item for item in candidates if item[1] > TARGET_TOLERANCE]
+    if not affordable:
+        return None
+    return max(affordable, key=lambda item: item[1])[0]
+
+
 def _trim_to_cap(room: Rect) -> tuple[Rect | None, Rect | None]:
     """Split a room into (room at its ceiling, the leftover strip)."""
     ceiling = max_area(room.type)
@@ -396,20 +478,34 @@ def _shift_shared_wall(
 
     ``cap_donor`` switches the goal from "bring the receiver up to its minimum"
     to "bring the donor down to its ceiling", which is what the push phase
-    needs. Either way both rooms stay rectangular and the pair still covers
-    exactly the same footprint, so no gap or overlap can appear.
+    needs.
+    """
+    if cap_donor:
+        wanted = donor.area - max_area(donor.type)
+        spare = max_area(needy.type) - needy.area
+    else:
+        wanted = min_area(needy.type) - needy.area
+        spare = donor.area - min_area(donor.type)
+
+    return _move_area(rooms, donor, needy, wanted_area=wanted, spare_area=spare)
+
+
+def _move_area(
+    rooms: list[Rect], donor: Rect, needy: Rect, *, wanted_area: float, spare_area: float
+) -> list[Rect] | None:
+    """Hand ``wanted_area`` sq ft from ``donor`` to ``needy`` across their shared wall.
+
+    Both rooms stay rectangular and the pair still covers exactly the same
+    footprint, so no gap or overlap can appear - which is what makes this safe
+    to run after the last repair pass.
     """
     vertical = abs(donor.x - needy.x) < 0.3 and abs(donor.x2 - needy.x2) < 0.3
     span = donor.width if vertical else donor.height
     if span <= 0:
         return None
 
-    if cap_donor:
-        wanted = (donor.area - max_area(donor.type)) / span
-        spare = (max_area(needy.type) - needy.area) / span
-    else:
-        wanted = (min_area(needy.type) - needy.area) / span
-        spare = (donor.area - min_area(donor.type)) / span
+    wanted = wanted_area / span
+    spare = spare_area / span
 
     shift = snap(min(wanted, spare, 6.0))
     if shift < GRID:

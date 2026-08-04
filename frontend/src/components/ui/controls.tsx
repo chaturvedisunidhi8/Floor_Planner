@@ -5,7 +5,7 @@
  * only compose them, never re-implement input behaviour.
  */
 
-import type { ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 import { cn } from '@/lib/cn';
 
@@ -267,6 +267,123 @@ export function Counter({ label, value, min, max, hint, onChange }: CounterProps
         </div>
       </div>
     </div>
+  );
+}
+
+interface NumberStepperProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  disabled?: boolean;
+  onChange: (value: number) => void;
+}
+
+/**
+ * A numeric field with minus/plus buttons.
+ *
+ * Typing is free-form until the field is left: the value is only pushed up
+ * while it is a number inside the allowed range, so clearing the box to retype
+ * "8" as "18" does not snap it to the minimum mid-keystroke.
+ */
+export function NumberStepper({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  unit = 'ft',
+  disabled = false,
+  onChange,
+}: NumberStepperProps) {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const clamp = (next: number) => Math.min(max, Math.max(min, Math.round(next / step) * step));
+
+  const nudge = (delta: number) => {
+    setDraft(null);
+    onChange(clamp(value + delta));
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-xs font-medium text-ink-600">
+        {label}
+      </label>
+      <div
+        className={cn(
+          'flex items-center rounded-lg border border-ink-200 bg-white',
+          disabled && 'opacity-50',
+        )}
+      >
+        <StepperButton
+          label={`Decrease ${label}`}
+          disabled={disabled || value <= min}
+          onClick={() => nudge(-step)}
+        >
+          &minus;
+        </StepperButton>
+        <div className="flex min-w-0 flex-1 items-baseline justify-center gap-1 px-1">
+          <input
+            id={id}
+            type="number"
+            inputMode="numeric"
+            className="w-full min-w-0 border-0 bg-transparent p-0 text-center font-mono text-sm font-semibold tabular-nums text-ink-900 focus:outline-none focus:ring-0 disabled:cursor-not-allowed [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            min={min}
+            max={max}
+            step={step}
+            disabled={disabled}
+            value={draft ?? value}
+            onChange={(event) => {
+              const raw = event.target.value;
+              setDraft(raw);
+              const parsed = Number(raw);
+              if (raw !== '' && Number.isFinite(parsed) && parsed >= min && parsed <= max) {
+                onChange(clamp(parsed));
+              }
+            }}
+            onBlur={() => {
+              if (draft !== null && draft !== '') onChange(clamp(Number(draft) || value));
+              setDraft(null);
+            }}
+          />
+          {unit ? <span className="shrink-0 text-xs text-ink-500">{unit}</span> : null}
+        </div>
+        <StepperButton
+          label={`Increase ${label}`}
+          disabled={disabled || value >= max}
+          onClick={() => nudge(step)}
+        >
+          +
+        </StepperButton>
+      </div>
+    </div>
+  );
+}
+
+function StepperButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg leading-none text-ink-600 transition hover:bg-ink-100 disabled:cursor-not-allowed disabled:opacity-30"
+    >
+      {children}
+    </button>
   );
 }
 

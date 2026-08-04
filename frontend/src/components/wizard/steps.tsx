@@ -14,6 +14,7 @@ import {
   Select,
   Slider,
 } from '@/components/ui/controls';
+import { AreaBudget, RoomPlanner } from '@/components/wizard/RoomPlanner';
 import { ESSENTIAL_ROOMS, type RequirementsController } from '@/hooks/useRequirements';
 import type {
   BHKType,
@@ -91,7 +92,7 @@ export function PlotStep({ options, controller }: StepProps) {
 }
 
 export function ConfigurationStep({ options, controller }: StepProps) {
-  const { requirements, derived, setBhk, toggleRoom } = controller;
+  const { requirements, derived, setBhk, toggleRoom, setRoomDimensions } = controller;
 
   return (
     <div className="space-y-7">
@@ -107,15 +108,26 @@ export function ConfigurationStep({ options, controller }: StepProps) {
         />
       </Field>
 
+      <Field label="Area budget" hint="Walls and circulation come out of the remaining area.">
+        <AreaBudget
+          availableSqft={derived.areaSqft}
+          allocatedSqft={derived.allocatedSqft}
+          remainingSqft={derived.remainingSqft}
+          isOverAllocated={derived.isOverAllocated}
+        />
+      </Field>
+
       <Field
-        label="Required rooms"
+        label="Required rooms and sizes"
         hint={`${derived.roomCount} rooms selected. The living room and kitchen are always included.`}
       >
-        <CheckboxGrid
-          options={options.rooms}
+        <RoomPlanner
+          options={options}
           selected={requirements.rooms}
-          locked={[...ESSENTIAL_ROOMS]}
+          locked={ESSENTIAL_ROOMS}
+          dimensions={requirements.room_dimensions}
           onToggle={toggleRoom}
+          onDimensionsChange={setRoomDimensions}
         />
       </Field>
     </div>
@@ -204,6 +216,7 @@ export function SummaryPanel({ controller }: { controller: RequirementsControlle
   const entries: [string, string][] = [
     ['Plot', `${requirements.plot.width_ft} x ${requirements.plot.length_ft} ft`],
     ['Area', `${derived.areaSqft.toLocaleString()} sq ft`],
+    ['Allocated', `${derived.allocatedSqft.toLocaleString()} sq ft`],
     ['Facing', label(requirements.plot.facing)],
     ['Configuration', requirements.bhk],
     ['Bathrooms', `${derived.totalBathrooms}`],
@@ -225,14 +238,22 @@ export function SummaryPanel({ controller }: { controller: RequirementsControlle
       <div className="mt-4 border-t border-ink-100 pt-4">
         <span className="text-xs font-medium uppercase tracking-wide text-ink-500">Rooms</span>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {requirements.rooms.map((room) => (
-            <span
-              key={room}
-              className="rounded-md bg-ink-100 px-2 py-1 text-xs font-medium text-ink-700"
-            >
-              {label(room)}
-            </span>
-          ))}
+          {requirements.rooms.map((room) => {
+            const size = requirements.room_dimensions[room];
+            return (
+              <span
+                key={room}
+                className="rounded-md bg-ink-100 px-2 py-1 text-xs font-medium text-ink-700"
+              >
+                {label(room)}
+                {size ? (
+                  <span className="ml-1 font-mono text-ink-500">
+                    {size.length_ft}&times;{size.width_ft}
+                  </span>
+                ) : null}
+              </span>
+            );
+          })}
         </div>
       </div>
 

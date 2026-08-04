@@ -22,6 +22,15 @@ export interface RangeSpec {
   default: number;
 }
 
+/** Length and width of a single room, in feet. */
+export interface RoomDimensions {
+  length_ft: number;
+  width_ft: number;
+}
+
+/** Default room sizes keyed by room value, e.g. `living_room`. */
+export type RoomDefaults = Record<string, RoomDimensions>;
+
 export interface OptionsResponse {
   plot_shapes: OptionItem[];
   bhk_types: OptionItem[];
@@ -31,6 +40,8 @@ export interface OptionsResponse {
   facings: OptionItem[];
   plot_width_range: RangeSpec;
   plot_length_range: RangeSpec;
+  room_defaults: RoomDefaults;
+  room_dimension_range: RangeSpec;
   max_attached_bathrooms: number;
   max_common_bathrooms: number;
 }
@@ -51,6 +62,8 @@ export interface FloorPlanRequirements {
   plot: PlotDetails;
   bhk: BHKType;
   rooms: string[];
+  /** Per-room size targets, keyed by room value. Only selected rooms appear. */
+  room_dimensions: Record<string, RoomDimensions>;
   bathrooms: BathroomRequirements;
   features: string[];
   style: InteriorStyle;
