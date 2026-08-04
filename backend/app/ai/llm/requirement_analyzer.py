@@ -189,11 +189,18 @@ class RequirementAnalyzer:
     @staticmethod
     def _user_prompt(req: FloorPlanRequirements) -> str:
         allowed = ", ".join(sorted({r.value for r in req.all_room_types}))
+        sizes = req.describe_dimensions()
+        size_line = (
+            f"- Client room sizes (length x width, preserve where possible): {sizes}\n"
+            if sizes
+            else ""
+        )
         return (
             f"CLIENT REQUIREMENTS\n"
             f"- Plot: {req.plot.describe()}, facing {req.plot.facing.value}\n"
             f"- Configuration: {req.bhk.value}\n"
             f"- Rooms requested: {', '.join(r.value for r in req.rooms)}\n"
+            f"{size_line}"
             f"- Bathrooms: {req.bathrooms.describe()}\n"
             f"- Additional features: {', '.join(f.value for f in req.features) or 'none'}\n"
             f"- Interior style: {req.style.value}\n"

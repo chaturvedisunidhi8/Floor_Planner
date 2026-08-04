@@ -17,7 +17,13 @@ from app.schemas.enums import (
     PlotShape,
 )
 from app.schemas.layout import OptionItem, OptionsResponse
-from app.schemas.requirements import MAX_PLOT_FT, MIN_PLOT_FT
+from app.schemas.requirements import (
+    MAX_PLOT_FT,
+    MAX_ROOM_FT,
+    MIN_PLOT_FT,
+    MIN_ROOM_FT,
+    ROOM_DEFAULT_DIMENSIONS,
+)
 
 router = APIRouter(tags=["options"])
 
@@ -83,6 +89,11 @@ def options() -> OptionsResponse:
         ],
         plot_width_range={"min": MIN_PLOT_FT, "max": MAX_PLOT_FT, "step": 1, "default": 30},
         plot_length_range={"min": MIN_PLOT_FT, "max": MAX_PLOT_FT, "step": 1, "default": 45},
+        room_defaults={
+            room.value: {"length_ft": dims.length_ft, "width_ft": dims.width_ft}
+            for room, dims in ROOM_DEFAULT_DIMENSIONS.items()
+        },
+        room_dimension_range={"min": MIN_ROOM_FT, "max": MAX_ROOM_FT, "step": 1, "default": 10},
         max_attached_bathrooms=4,
         max_common_bathrooms=3,
     )

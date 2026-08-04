@@ -61,6 +61,15 @@ def test_options_drive_every_wizard_control(client) -> None:
     assert body["plot_width_range"]["min"] < body["plot_width_range"]["max"]
 
 
+def test_options_carry_a_default_size_for_every_room(client) -> None:
+    """The wizard seeds its dimension steppers from this, so it must be complete."""
+    body = client.get(f"{PREFIX}/options").json()
+    defaults = body["room_defaults"]
+    assert {r["value"] for r in body["rooms"]} == set(defaults)
+    assert defaults["living_room"] == {"length_ft": 16, "width_ft": 14}
+    assert body["room_dimension_range"]["min"] < body["room_dimension_range"]["max"]
+
+
 # --- Templates ------------------------------------------------------------
 def test_list_templates(client) -> None:
     body = client.get(f"{PREFIX}/templates").json()
@@ -162,6 +171,29 @@ def test_seed_makes_generation_reproducible(client, brief, generated) -> None:
 def test_oversized_plot_is_rejected(client, brief) -> None:
     payload = {**brief, "requirements": {**brief["requirements"]}}
     payload["requirements"]["plot"] = {**payload["requirements"]["plot"], "width_ft": 500}
+    assert client.post(f"{PREFIX}/generate", json=payload).status_code == 422
+
+
+def test_room_dimensions_are_accepted_and_honoured(client, brief) -> None:
+    payload = {**brief, "requirements": {**brief["requirements"]}, "variants": 1}
+    payload["requirements"]["room_dimensions"] = {
+        "living_room": {"length_ft": 18, "width_ft": 14},
+        "kitchen": {"length_ft": 10, "width_ft": 9},
+    }
+    response = client.post(f"{PREFIX}/generate", json=payload)
+    assert response.status_code == 201
+
+    rooms = response.json()["layouts"][0]["rooms"]
+    living = sum(r["width"] * r["height"] for r in rooms if r["type"] == "living_room")
+    # Exact placement is not promised - staying in the right neighbourhood is.
+    assert 0.5 * 252 <= living <= 1.5 * 252
+
+
+def test_an_impossible_room_size_is_rejected(client, brief) -> None:
+    payload = {**brief, "requirements": {**brief["requirements"]}}
+    payload["requirements"]["room_dimensions"] = {
+        "living_room": {"length_ft": 400, "width_ft": 400}
+    }
     assert client.post(f"{PREFIX}/generate", json=payload).status_code == 422
 
 

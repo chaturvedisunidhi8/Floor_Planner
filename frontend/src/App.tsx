@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, FloorPlannerApiError } from '@/api/client';
 import { LayoutGallery } from '@/components/gallery/LayoutGallery';
 import { Button } from '@/components/ui/controls';
+import { OVER_ALLOCATION_MESSAGE } from '@/components/wizard/RoomPlanner';
 import {
   BathroomStep,
   ConfigurationStep,
@@ -43,7 +44,10 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const controller = useRequirements();
+  const controller = useRequirements(options);
+  // Rooms that do not fit the plot cannot be planned, so the wizard holds the
+  // user on the configuration step until the budget balances.
+  const isBlocked = controller.derived.isOverAllocated;
 
   useEffect(() => {
     let cancelled = false;
@@ -141,6 +145,16 @@ export default function App() {
                   {step === 3 ? <StyleStep options={options} controller={controller} /> : null}
                 </div>
 
+                {/* The configuration step shows this beside its own budget. */}
+                {isBlocked && step !== 1 ? (
+                  <p
+                    role="alert"
+                    className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
+                  >
+                    {OVER_ALLOCATION_MESSAGE}
+                  </p>
+                ) : null}
+
                 {error ? (
                   <p
                     role="alert"
@@ -160,9 +174,14 @@ export default function App() {
                   </Button>
 
                   {step < STEPS.length - 1 ? (
-                    <Button onClick={() => setStep((value) => value + 1)}>Continue</Button>
+                    <Button
+                      onClick={() => setStep((value) => value + 1)}
+                      disabled={isBlocked}
+                    >
+                      Continue
+                    </Button>
                   ) : (
-                    <Button onClick={generate} disabled={isGenerating}>
+                    <Button onClick={generate} disabled={isGenerating || isBlocked}>
                       {isGenerating ? (
                         <>
                           <Spinner />

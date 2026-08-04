@@ -310,3 +310,85 @@ def test_tiny_plot_still_produces_something_valid(repository) -> None:
     assert plan.rooms
     report = LayoutValidator(plan.plot_width, plan.plot_length).validate(plan.rooms)
     assert report.ok, report.errors
+
+
+# --- Requested room dimensions --------------------------------------------
+def test_resize_to_targets_moves_area_toward_the_requested_size() -> None:
+    from app.geometry.validator import resize_to_targets
+
+    rooms = [
+        Rect(RoomType.LIVING_ROOM, "Living", 0, 0, 12, 10),
+        Rect(RoomType.STORE_ROOM, "Store", 0, 10, 12, 12),
+    ]
+    living, store = resize_to_targets(rooms, {RoomType.LIVING_ROOM: 200.0})
+
+    assert living.area > 120
+    # The pair still tiles exactly the same footprint - no gap, no overlap.
+    assert living.y2 == pytest.approx(store.y)
+    assert store.y2 == pytest.approx(22)
+
+
+def test_resize_to_targets_never_takes_a_donor_below_its_own_request() -> None:
+    from app.geometry.validator import resize_to_targets
+
+    rooms = [
+        Rect(RoomType.LIVING_ROOM, "Living", 0, 0, 12, 10),
+        Rect(RoomType.MASTER_BEDROOM, "Master", 0, 10, 12, 16),
+    ]
+    targets = {RoomType.LIVING_ROOM: 260.0, RoomType.MASTER_BEDROOM: 180.0}
+    _, master = resize_to_targets(rooms, targets)
+
+    assert master.area >= 180.0
+
+
+def test_resize_to_targets_is_a_no_op_without_targets() -> None:
+    from app.geometry.validator import resize_to_targets
+
+    rooms = [
+        Rect(RoomType.LIVING_ROOM, "Living", 0, 0, 12, 10),
+        Rect(RoomType.KITCHEN, "Kitchen", 0, 10, 12, 10),
+    ]
+    assert resize_to_targets(rooms, {}) == rooms
+
+
+def test_requested_dimensions_pull_the_layout_closer_to_the_brief(repository) -> None:
+    """The client's sizes must measurably beat the engine's own defaults."""
+    from app.schemas.requirements import RoomDimensions
+
+    wanted = {
+        RoomType.LIVING_ROOM: RoomDimensions(length_ft=18, width_ft=14),
+        RoomType.MASTER_BEDROOM: RoomDimensions(length_ft=15, width_ft=13),
+        RoomType.KITCHEN: RoomDimensions(length_ft=10, width_ft=9),
+    }
+    rooms = [RoomType.LIVING_ROOM, RoomType.KITCHEN, RoomType.MASTER_BEDROOM]
+
+    def error(room_dimensions) -> float:
+        requirements = make_requirements(rooms=rooms, room_dimensions=room_dimensions)
+        engine = LayoutEngine(requirements)
+        total = 0.0
+        for index, template_id in enumerate(ALL_TEMPLATE_IDS):
+            plan = engine.generate(repository.get(template_id), seed=7 + index, variation_index=0)
+            for room_type, dims in wanted.items():
+                built = sum(r.area for r in plan.rooms if r.type is room_type)
+                total += abs(built - dims.area_sqft)
+        return total
+
+    assert error(wanted) < error({})
+
+
+def test_a_generous_request_does_not_break_the_layout(repository) -> None:
+    """Sizes the plot cannot honour degrade the fit, never the validity."""
+    from app.schemas.requirements import RoomDimensions
+
+    requirements = make_requirements(
+        rooms=[RoomType.LIVING_ROOM, RoomType.KITCHEN, RoomType.MASTER_BEDROOM],
+        room_dimensions={
+            RoomType.LIVING_ROOM: RoomDimensions(length_ft=40, width_ft=30),
+            RoomType.MASTER_BEDROOM: RoomDimensions(length_ft=30, width_ft=25),
+        },
+    )
+    plan = LayoutEngine(requirements).generate(
+        repository.get("TPL-001"), seed=11, variation_index=0
+    )
+    report = LayoutValidator(plan.plot_width, plan.plot_length).validate(plan.rooms)
+    assert report.ok, report.errors

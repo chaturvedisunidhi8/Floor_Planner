@@ -109,5 +109,9 @@ class OptionsResponse(BaseModel):
     facings: list[OptionItem]
     plot_width_range: dict[str, float]
     plot_length_range: dict[str, float]
+    #: Default length/width per room key - the wizard seeds its steppers here.
+    room_defaults: dict[str, dict[str, float]]
+    #: Bounds and step for a single room edge.
+    room_dimension_range: dict[str, float]
     max_attached_bathrooms: int
     max_common_bathrooms: int

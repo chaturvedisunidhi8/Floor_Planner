@@ -14,8 +14,14 @@ from app.ai.prompting.prompt_builder import PromptBuilder
 from app.core.config import ImageProvider, ImageStrategy, get_settings
 from app.core.exceptions import ImageProviderError
 from app.geometry.layout_engine import LayoutEngine
-from app.schemas.enums import BHKType, InteriorStyle, RoomType
-from app.schemas.requirements import BathroomRequirements, FloorPlanRequirements, PlotDetails
+from app.schemas.enums import SELECTABLE_ROOMS, BHKType, InteriorStyle, RoomType
+from app.schemas.requirements import (
+    ROOM_DEFAULT_DIMENSIONS,
+    BathroomRequirements,
+    FloorPlanRequirements,
+    PlotDetails,
+    RoomDimensions,
+)
 from tests.conftest import make_requirements
 
 
@@ -59,6 +65,37 @@ def test_duplicate_selections_are_collapsed() -> None:
     )
     assert requirements.rooms.count(RoomType.LIVING_ROOM) == 1
     assert requirements.features.count(RoomType.BALCONY) == 1
+
+
+def test_room_dimensions_are_dropped_for_rooms_that_were_not_selected() -> None:
+    requirements = make_requirements(
+        rooms=[RoomType.LIVING_ROOM, RoomType.KITCHEN],
+        room_dimensions={
+            RoomType.KITCHEN: RoomDimensions(length_ft=10, width_ft=9),
+            RoomType.POOJA_ROOM: RoomDimensions(length_ft=8, width_ft=6),
+        },
+    )
+    assert RoomType.POOJA_ROOM not in requirements.room_dimensions
+    assert requirements.room_dimensions[RoomType.KITCHEN].area_sqft == 90
+
+
+def test_area_targets_and_total_follow_the_request() -> None:
+    requirements = make_requirements(
+        rooms=[RoomType.LIVING_ROOM, RoomType.KITCHEN],
+        room_dimensions={
+            RoomType.LIVING_ROOM: RoomDimensions(length_ft=16, width_ft=14),
+            RoomType.KITCHEN: RoomDimensions(length_ft=10, width_ft=10),
+        },
+    )
+    assert requirements.area_targets[RoomType.LIVING_ROOM] == 224
+    assert requirements.requested_area_sqft == 324
+    assert "living_room 16x14 ft" in requirements.describe_dimensions()
+
+
+def test_every_selectable_room_has_a_default_size() -> None:
+    """The wizard seeds its steppers from this table, so a hole would show."""
+    for room in SELECTABLE_ROOMS:
+        assert room in ROOM_DEFAULT_DIMENSIONS
 
 
 def test_search_text_mentions_the_essentials() -> None:
