@@ -23,15 +23,26 @@ reproducible tests and for regenerating an image the user has already seen.
 from __future__ import annotations
 
 import random
+from collections import Counter
 from dataclasses import dataclass, replace
 
 from app.core.logging import get_logger
-from app.geometry.primitives import GRID, Rect, align_walls, min_area, min_side, snap
+from app.geometry.primitives import (
+    GRID,
+    Rect,
+    align_walls,
+    min_area,
+    min_side,
+    natural_area,
+    snap,
+)
+from app.geometry.slicing import add_circulation, assign_demands, build_tree, instantiate
 from app.geometry.validator import (
     LayoutRepairer,
     LayoutValidator,
     absorb_vacated,
     cap_room_sizes,
+    ensure_circulation,
     fill_gaps,
     fit_to_plot,
     merge_adjacent_passages,
@@ -43,6 +54,10 @@ from app.schemas.requirements import FloorPlanRequirements
 from app.schemas.template import FloorPlanTemplate
 
 logger = get_logger(__name__)
+
+#: Past this proportion a carved slice reads as a corridor rather than a room,
+#: and :meth:`LayoutEngine._enforce_minimum_sizes` would throw it away.
+RIBBON_ASPECT = 2.8
 
 #: Bedrooms in descending order of desirability - the largest template bedroom
 #: becomes the master, the next the children's room, and so on.
@@ -116,8 +131,10 @@ class LayoutEngine:
         self._w = requirements.plot.width_ft
         self._l = requirements.plot.length_ft
         # Empty unless the client sized the rooms itself, in which case every
-        # sizing decision below aims at these instead of the generic bands.
-        self._targets = requirements.area_targets
+        # sizing decision below aims at these instead of the generic bands -
+        # shape as well as area, so a 168 sq ft request cannot be met with a
+        # 10.5 x 25 ft room.
+        self._targets = requirements.room_targets
         self._validator = LayoutValidator(self._w, self._l)
         self._repairer = LayoutRepairer(self._w, self._l)
 
@@ -126,33 +143,48 @@ class LayoutEngine:
 
         rooms = self._orient_and_scale(template)
         rooms = self._reconcile_programme(rooms, rng)
+        # Circulation before variation: the operators below move rooms about,
+        # and it is far easier to mirror a plan that already has a corridor
+        # than to thread one through a plan that has been shuffled.
+        rooms = ensure_circulation(rooms, self._w, self._l)
         rooms, variation = self._apply_variation(rooms, rng, variation_index)
 
+        targets = self._targets
         rooms = align_walls(rooms)
         rooms = self._repairer.repair(rooms)
         # Reach the plot edges first, then claw back the service rooms that
         # scaling inflated - capping earlier would just be undone by the fit.
-        rooms = fit_to_plot(rooms, self._w, self._l)
+        rooms = fit_to_plot(rooms, self._w, self._l, targets=targets)
         rooms = self._repairer.repair(rooms)
-        rooms = cap_room_sizes(rooms)
-        rooms = fill_gaps(rooms, self._w, self._l)
+        # Settle the proportions before anything caps them. Sliding a wall
+        # costs no floor area; trimming a badly shaped room throws away the
+        # very area it was given, so it must have nothing left to trim.
+        rooms = resize_to_targets(rooms, targets, plot_width=self._w, plot_length=self._l)
+        rooms = cap_room_sizes(rooms, targets=targets)
+        rooms = fill_gaps(rooms, self._w, self._l, targets=targets)
         rooms = self._repairer.repair(rooms)
         rooms = self._enforce_minimum_sizes(rooms)
-        rooms = fill_gaps(rooms, self._w, self._l)
+        rooms = fill_gaps(rooms, self._w, self._l, targets=targets)
         rooms = self._repairer.repair(rooms)
         # Strict pass last: repair can reopen a pocket by trimming an overlap,
         # and only overlap-safe merges may run once nothing will repair after.
-        rooms = fill_gaps(rooms, self._w, self._l, strict=True)
+        rooms = fill_gaps(rooms, self._w, self._l, strict=True, targets=targets)
         rooms = merge_adjacent_passages(rooms)
         # Even out the plan last. Wall shifts are geometry-neutral, but the
         # trim-and-reabsorb fallback is not, so tidy up behind it.
-        rooms = rebalance_room_sizes(rooms)
+        rooms = rebalance_room_sizes(rooms, targets=targets)
         rooms = self._repairer.repair(rooms)
-        rooms = fill_gaps(rooms, self._w, self._l, strict=True)
+        rooms = fill_gaps(rooms, self._w, self._l, strict=True, targets=targets)
+        # Repair and gap filling can both sever a doorway; re-cut whatever the
+        # tidying broke before the sizes are settled around it.
+        rooms = ensure_circulation(rooms, self._w, self._l)
         # The client's own sizes have the final word: this runs after the
         # generic bands have had their say so nothing can cap a room back down
-        # below what was asked for.
-        rooms = resize_to_targets(rooms, self._targets)
+        # below what was asked for. Sliding whole wall lines conserves the
+        # footprint exactly, so it cannot reopen a gap behind itself.
+        rooms = resize_to_targets(
+            rooms, targets, plot_width=self._w, plot_length=self._l
+        )
 
         report = self._validator.validate(rooms)
         if not report.ok:
@@ -177,29 +209,121 @@ class LayoutEngine:
             warnings=report.all_messages(),
         )
 
-    # --- 1 & 2: orientation and scaling -----------------------------------
+    # --- 1 & 2: orientation and instantiation -------------------------------
     def _orient_and_scale(self, template: FloorPlanTemplate) -> list[Rect]:
-        rooms = [
-            Rect(r.type, r.name, r.x, r.y, r.width, r.height) for r in template.rooms
-        ]
+        """Rebuild the template's arrangement at the client's sizes.
+
+        The template supplies the topology - which room sits beside which, and
+        on which side. Every dimension comes from the brief. See
+        :mod:`app.geometry.slicing` for why this is not simply a scale.
+        """
+        rooms = [Rect(r.type, r.name, r.x, r.y, r.width, r.height) for r in template.rooms]
         tw, tl = template.plot_width_ft, template.plot_length_ft
 
-        # A portrait template on a landscape plot (or vice versa) scales into
-        # absurdly stretched rooms; turning it a quarter first preserves the
-        # original proportions.
+        # A portrait template on a landscape plot (or vice versa) reads better
+        # turned a quarter first: the arrangement keeps its original grain.
         direct = abs((tw / tl) - (self._w / self._l))
         rotated = abs((tl / tw) - (self._w / self._l))
         if rotated < direct - 0.05:
             rooms = [r.rotated() for r in rooms]
             tw, tl = tl, tw
 
-        sx, sy = self._w / tw, self._l / tl
-        return [r.scaled(sx, sy).snapped() for r in rooms]
+        rooms = self._select_programme(rooms)
+        if not rooms:
+            return []
+
+        tree = build_tree(rooms, lambda room: self._wanted_area(room.type))
+        spare = assign_demands(tree, self._targets, self._w * self._l, tw * tl)
+        # Slack goes to circulation rather than being shared out among the
+        # rooms, which is what inflated them past the brief in the first place.
+        # This matters even with no sizes given: the tree divides the plot in
+        # proportion to demand, so area nobody demands would otherwise be
+        # handed out anyway, straight past the generic ceilings.
+        tree = add_circulation(tree, spare)
+
+        placed = instantiate(tree, 0.0, 0.0, self._w, self._l, self._targets)
+        return [r.snapped() for r in placed]
+
+    def _missing_types(self, rooms: list[Rect]) -> list[RoomType]:
+        """Rooms the brief asks for that this template does not have.
+
+        Bathrooms are counted rather than merely checked for, since the brief
+        gives a number of each and a template rarely happens to match it.
+        """
+        have = Counter(room.type for room in rooms)
+        missing: list[RoomType] = []
+        for room_type, wanted in Counter(self._req.all_room_types).items():
+            shortfall = wanted - have.get(room_type, 0)
+            missing.extend([room_type] * max(0, shortfall))
+        return missing
+
+    def _select_programme(self, rooms: list[Rect]) -> list[Rect]:
+        """Decide which of the template's rooms the brief actually wants.
+
+        Done before the tree is built rather than after it is laid out: a room
+        dropped here simply is not in the arrangement, and its floor area is
+        redistributed by the proportional split instead of having to be
+        absorbed by a neighbour afterwards.
+        """
+        rooms = self._retype_bedrooms(rooms)
+        requested = set(self._req.all_room_types)
+        kept = [
+            room
+            for room in rooms
+            if room.type not in OPTIONAL_ROOMS or room.type in requested
+        ]
+        kept = kept or rooms
+        return kept + self._stand_ins(kept)
+
+    def _stand_ins(self, rooms: list[Rect]) -> list[Rect]:
+        """Placeholders for rooms the brief wants and the template has not got.
+
+        They join the arrangement as ordinary rooms, sitting where the room
+        they belong next to sits, so the cuts are chosen knowing they are
+        there. Adding them to the finished tree instead would nest every one of
+        them against the same neighbour, and a chain like that puts each room
+        in a thinner box than the last.
+        """
+        missing = self._missing_types(rooms)
+        if not missing:
+            return []
+
+        placed: list[Rect] = []
+        for room_type in missing:
+            wanted = self._wanted_area(room_type)
+            side = max(min_side(room_type), wanted**0.5)
+            anchor = self._anchor(rooms + placed, room_type)
+            placed.append(
+                Rect(
+                    room_type,
+                    room_type.label,
+                    anchor[0] - side / 2,
+                    anchor[1] - wanted / side / 2,
+                    side,
+                    wanted / side,
+                )
+            )
+        return placed
+
+    @staticmethod
+    def _anchor(rooms: list[Rect], room_type: RoomType) -> tuple[float, float]:
+        """Where in the template's arrangement this room belongs."""
+        for host_type in CARVE_HOSTS.get(room_type, (RoomType.LIVING_ROOM,)):
+            host = next((r for r in rooms if r.type is host_type), None)
+            if host is not None:
+                return host.center
+
+        widest = max(rooms, key=lambda r: r.area)
+        return widest.center
 
     # --- 3: programme reconciliation --------------------------------------
     def _reconcile_programme(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
-        rooms = self._retype_bedrooms(rooms)
-        rooms = self._drop_unwanted(rooms)
+        """Bring the placed rooms in line with the brief.
+
+        Retyping and dropping already happened in :meth:`_select_programme`,
+        before the arrangement was laid out. What is left needs geometry: rooms
+        the template did not have must be cut out of the ones it did.
+        """
         rooms = self._adjust_bathrooms(rooms, rng)
         rooms = self._insert_missing(rooms, rng)
         return rooms
@@ -268,22 +392,6 @@ class LayoutEngine:
                 result.append(room)
         return result
 
-    def _drop_unwanted(self, rooms: list[Rect]) -> list[Rect]:
-        requested = set(self._req.all_room_types)
-        kept: list[Rect] = []
-        removed: list[Rect] = []
-        for room in rooms:
-            if room.type in OPTIONAL_ROOMS and room.type not in requested:
-                removed.append(room)
-            else:
-                kept.append(room)
-
-        # The vacated area is absorbed by the largest adjacent room rather than
-        # left as a hole in the plan.
-        for room in removed:
-            kept = self._absorb(kept, room)
-        return kept
-
     def _adjust_bathrooms(self, rooms: list[Rect], rng: random.Random) -> list[Rect]:
         """Bring the bathroom counts in line with what was requested."""
         for room_type, wanted in (
@@ -311,6 +419,11 @@ class LayoutEngine:
     def _carve(self, rooms: list[Rect], room_type: RoomType, rng: random.Random) -> list[Rect]:
         """Split a host room to make space for ``room_type``."""
         hosts = CARVE_HOSTS.get(room_type, (RoomType.LIVING_ROOM, RoomType.PASSAGE))
+        if self._targets:
+            # The corridor is holding exactly the floor area the brief did not
+            # spend. Take a room the template lacked out of that before taking
+            # it out of a room the client sized themselves.
+            hosts = (RoomType.PASSAGE, *hosts)
         needed = min_side(room_type)
         # The host must survive giving up the room's *minimum*; the slice itself
         # then aims for the requested size, so a room the client sized generously
@@ -331,10 +444,10 @@ class LayoutEngine:
                 continue
 
             host = max(candidates, key=lambda r: r.area)
-            new_room, remainder = self._split(host, room_type, needed, rng)
-            if new_room is None or remainder is None:
+            new_room, pieces = self._split(host, room_type, needed, rng)
+            if new_room is None:
                 continue
-            return [remainder if r is host else r for r in rooms] + [new_room]
+            return [r for r in rooms if r is not host] + pieces + [new_room]
 
         logger.debug("Could not carve space for %s", room_type.value)
         return rooms
@@ -357,13 +470,19 @@ class LayoutEngine:
 
     def _split(
         self, host: Rect, room_type: RoomType, needed: float, rng: random.Random
-    ) -> tuple[Rect | None, Rect | None]:
-        """Take a slice off the host, keeping both halves usable."""
+    ) -> tuple[Rect | None, list[Rect]]:
+        """Take a slice off the host, keeping every piece usable.
+
+        Returns the new room and the rectangles that replace the host. A small
+        room taken as a full-width band off a large host comes out a ribbon -
+        a 16 x 3.5 ft prayer room - so when that would happen the band is
+        divided again and the offcut becomes circulation.
+        """
         host_floor = min_area(host.type)
         target_area = max(self._wanted_area(room_type), needed * needed)
         target_area = min(target_area, host.area - host_floor)
         if target_area < needed * needed:
-            return None, None
+            return None, []
 
         horizontal = host.width >= host.height
         # An outdoor slice must land on the external edge, not the inner one.
@@ -376,35 +495,66 @@ class LayoutEngine:
         if horizontal:
             slice_w = snap(min(max(needed, target_area / host.height), host.width - needed))
             if slice_w < needed or (host.width - slice_w) * host.height < host_floor:
-                return None, None
+                return None, []
             from_left = edge == "left" if edge in ("left", "right") else rng.random() < 0.5
-            if from_left:
-                new = Rect(room_type, room_type.label, host.x, host.y, slice_w, host.height)
-                rest = replace(host, x=host.x + slice_w, width=host.width - slice_w)
-            else:
-                new = Rect(
-                    room_type, room_type.label, host.x2 - slice_w, host.y, slice_w, host.height
-                )
-                rest = replace(host, width=host.width - slice_w)
+            x = host.x if from_left else host.x2 - slice_w
+            new = Rect(room_type, room_type.label, x, host.y, slice_w, host.height)
+            rest = (
+                replace(host, x=host.x + slice_w, width=host.width - slice_w)
+                if from_left
+                else replace(host, width=host.width - slice_w)
+            )
         else:
             slice_h = snap(min(max(needed, target_area / host.width), host.height - needed))
             if slice_h < needed or host.width * (host.height - slice_h) < host_floor:
-                return None, None
+                return None, []
             from_bottom = edge == "bottom" if edge in ("bottom", "top") else rng.random() < 0.5
-            if from_bottom:
-                new = Rect(room_type, room_type.label, host.x, host.y, host.width, slice_h)
-                rest = replace(host, y=host.y + slice_h, height=host.height - slice_h)
-            else:
-                new = Rect(
-                    room_type, room_type.label, host.x, host.y2 - slice_h, host.width, slice_h
-                )
-                rest = replace(host, height=host.height - slice_h)
+            y = host.y if from_bottom else host.y2 - slice_h
+            new = Rect(room_type, room_type.label, host.x, y, host.width, slice_h)
+            rest = (
+                replace(host, y=host.y + slice_h, height=host.height - slice_h)
+                if from_bottom
+                else replace(host, height=host.height - slice_h)
+            )
 
-        return new, rest
+        new, offcut = self._trim_ribbon(new, room_type, needed)
+        return new, [rest, *offcut]
+
+    @staticmethod
+    def _trim_ribbon(new: Rect, room_type: RoomType, needed: float) -> tuple[Rect, list[Rect]]:
+        """Shorten an over-long slice, handing the offcut to circulation."""
+        if new.aspect <= RIBBON_ASPECT or room_type.is_outdoor:
+            return new, []
+
+        if new.width >= new.height:
+            width = snap(max(needed, new.height * RIBBON_ASPECT))
+            if width >= new.width - GRID:
+                return new, []
+            offcut = replace(
+                new,
+                type=RoomType.PASSAGE,
+                name=RoomType.PASSAGE.label,
+                x=new.x + width,
+                width=new.width - width,
+            )
+            return replace(new, width=width), [offcut]
+
+        height = snap(max(needed, new.width * RIBBON_ASPECT))
+        if height >= new.height - GRID:
+            return new, []
+        offcut = replace(
+            new,
+            type=RoomType.PASSAGE,
+            name=RoomType.PASSAGE.label,
+            y=new.y + height,
+            height=new.height - height,
+        )
+        return replace(new, height=height), [offcut]
 
     def _wanted_area(self, room_type: RoomType) -> float:
-        """The size to aim for: what the client asked for, or the generic minimum."""
-        return max(min_area(room_type), self._targets.get(room_type, 0.0))
+        """The size to aim for: what the client asked for, or a believable default."""
+        target = self._targets.get(room_type)
+        return target.area if target else natural_area(room_type)
 
     def _external_edge(self, host: Rect) -> str | None:
         """Which plot boundary this room sits against, if any."""
@@ -418,8 +568,7 @@ class LayoutEngine:
                 return edge
         return None
 
-    @staticmethod
-    def _absorb(rooms: list[Rect], vacated: Rect) -> list[Rect]:
+    def _absorb(self, rooms: list[Rect], vacated: Rect) -> list[Rect]:
         """Extend the best-placed neighbour over a removed room's footprint.
 
         ``vacated`` must already be excluded from ``rooms``, which makes its
@@ -428,7 +577,7 @@ class LayoutEngine:
         it into a corridor. Sharing that logic keeps one set of rules for
         "who gets this space" instead of two that drift apart.
         """
-        return absorb_vacated(rooms, vacated)
+        return absorb_vacated(rooms, vacated, targets=self._targets)
 
     # --- 4: variation operators -------------------------------------------
     def _apply_variation(
@@ -564,9 +713,15 @@ class LayoutEngine:
         3 ft ribbon that no one could stand in, and a ribbon labelled "Balcony"
         is exactly the kind of artefact that gives a generated plan away.
         """
+        # A room the client ticked is not optional, whatever shape repair left
+        # it in. Dropping it silently is how a brief that asked for a dining
+        # room comes back without one; a badly proportioned dining room at
+        # least tells them something they can act on.
+        droppable = OPTIONAL_ROOMS - set(self._req.all_room_types)
+
         kept: list[Rect] = []
         for room in rooms:
-            if room.type not in OPTIONAL_ROOMS:
+            if room.type not in droppable:
                 kept.append(room)
                 continue
 

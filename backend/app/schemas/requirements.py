@@ -6,6 +6,8 @@ field here, and the whole thing is posted as a single JSON document.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.enums import (
@@ -25,6 +27,43 @@ MAX_PLOT_FT = 100
 #: bottom and a double-height living room at the top.
 MIN_ROOM_FT = 5
 MAX_ROOM_FT = 40
+
+
+@dataclass(frozen=True)
+class RoomTarget:
+    """What the client asked one room to be, in the terms the geometry engine aims at.
+
+    Area alone is not enough: a 6 x 28 ft room satisfies a 168 sq ft target and
+    is still nothing like the 14 x 12 room that was asked for. Carrying the
+    sides as well lets the engine score shape and size together.
+
+    ``long_side``/``short_side`` are optional so an area-only target (from the
+    deprecated float API) still works, just without the shape term.
+    """
+
+    area: float
+    long_side: float | None = None
+    short_side: float | None = None
+
+    @property
+    def aspect(self) -> float | None:
+        """Requested proportion, or ``None`` when only an area was given."""
+        if not self.long_side or not self.short_side:
+            return None
+        return self.long_side / self.short_side
+
+    @classmethod
+    def from_dimensions(cls, dims: RoomDimensions) -> RoomTarget:
+        return cls(
+            area=dims.area_sqft,
+            long_side=max(dims.length_ft, dims.width_ft),
+            short_side=min(dims.length_ft, dims.width_ft),
+        )
+
+    @classmethod
+    def coerce(cls, value: RoomTarget | float) -> RoomTarget:
+        """Accept a bare area as well as a full target."""
+        return value if isinstance(value, cls) else cls(area=float(value))
 
 
 class RoomDimensions(BaseModel):
@@ -199,8 +238,22 @@ class FloorPlanRequirements(BaseModel):
         return result
 
     @property
+    def room_targets(self) -> dict[RoomType, RoomTarget]:
+        """Requested size *and shape* per room - what the geometry engine aims for."""
+        return {
+            room: RoomTarget.from_dimensions(dims)
+            for room, dims in self.room_dimensions.items()
+        }
+
+    @property
     def area_targets(self) -> dict[RoomType, float]:
-        """Requested floor area per room - what the geometry engine aims for."""
+        """Requested floor area per room.
+
+        .. deprecated::
+            Area on its own cannot tell a 14 x 12 room from a 6 x 28 one. Use
+            :attr:`room_targets`; this remains for callers that only need the
+            square footage.
+        """
         return {room: dims.area_sqft for room, dims in self.room_dimensions.items()}
 
     @property
