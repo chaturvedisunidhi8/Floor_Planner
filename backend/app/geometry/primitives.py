@@ -93,6 +93,17 @@ def min_area(room_type: RoomType) -> float:
     return MIN_AREA.get(room_type, min_side(room_type) ** 2)
 
 
+def natural_area(room_type: RoomType) -> float:
+    """A room's unremarkable size - what to build when nobody said otherwise.
+
+    The minimum is the wrong answer here: it is the point at which a room stops
+    working, not the size anyone would draw. Sitting between the two bounds
+    gives a room the client did not think to measure a believable footprint
+    rather than the smallest one that would pass.
+    """
+    return (min_area(room_type) * max_area(room_type)) ** 0.5
+
+
 def snap(value: float, grid: float = GRID) -> float:
     return round(round(value / grid) * grid, 2)
 
