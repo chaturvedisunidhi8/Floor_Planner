@@ -43,6 +43,7 @@ Rules:
 - Keep every string under 160 characters.
 - 3 to 6 adjacency preferences. 2 to 4 design notes.
 - Respect Indian residential conventions when a pooja room is requested.
+- When Vastu principles are listed, let them drive the zoning and design notes.
 - Output JSON only."""
 
 
@@ -169,6 +170,15 @@ class RequirementAnalyzer:
         ]
 
         rooms = ", ".join(r.label for r in req.rooms)
+        notes = [
+            "Keep the sleeping zone away from the entry so circulation never crosses it.",
+            "Place wet areas back-to-back to shorten plumbing runs.",
+            "Give the living room the longest external wall for daylight.",
+        ]
+        if req.vastu.is_active:
+            # Named first so it survives the four-note cap in _merge.
+            notes.insert(0, req.vastu.describe().capitalize() + ".")
+
         return RequirementAnalysis(
             summary=(
                 f"A {req.style.label.lower()} {req.bhk.value} home on a {req.plot.describe()} "
@@ -178,11 +188,7 @@ class RequirementAnalyzer:
             priority_rooms=priority,
             adjacency_preferences=adjacencies,
             search_query=req.to_search_text(),
-            design_notes=[
-                "Keep the sleeping zone away from the entry so circulation never crosses it.",
-                "Place wet areas back-to-back to shorten plumbing runs.",
-                "Give the living room the longest external wall for daylight.",
-            ],
+            design_notes=notes,
             source="rule-based",
         )
 
@@ -203,6 +209,7 @@ class RequirementAnalyzer:
             f"{size_line}"
             f"- Bathrooms: {req.bathrooms.describe()}\n"
             f"- Additional features: {', '.join(f.value for f in req.features) or 'none'}\n"
+            f"- Vastu: {req.vastu.describe()}\n"
             f"- Interior style: {req.style.value}\n"
             f"- Client notes: {req.notes or 'none'}\n\n"
             f"ALLOWED_ROOMS: [{allowed}]\n\n"

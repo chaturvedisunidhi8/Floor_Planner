@@ -15,6 +15,7 @@ import {
   PlotStep,
   StyleStep,
   SummaryPanel,
+  VastuStep,
 } from '@/components/wizard/steps';
 import { useRequirements } from '@/hooks/useRequirements';
 import { cn } from '@/lib/cn';
@@ -22,6 +23,11 @@ import type { GeneratedLayout, GenerationResponse, OptionsResponse } from '@/typ
 
 const STEPS = [
   { key: 'plot', title: 'Plot details', blurb: 'Tell us about the land you are building on.' },
+  {
+    key: 'vastu',
+    title: 'Vastu preferences',
+    blurb: 'Optional: have the plans follow traditional directional principles.',
+  },
   {
     key: 'configuration',
     title: 'Configuration',
@@ -137,16 +143,25 @@ export default function App() {
                 <p className="mt-1 text-sm text-ink-600">{STEPS[step].blurb}</p>
 
                 <div className="mt-7">
-                  {step === 0 ? <PlotStep options={options} controller={controller} /> : null}
-                  {step === 1 ? (
+                  {STEPS[step].key === 'plot' ? (
+                    <PlotStep options={options} controller={controller} />
+                  ) : null}
+                  {STEPS[step].key === 'vastu' ? (
+                    <VastuStep options={options} controller={controller} />
+                  ) : null}
+                  {STEPS[step].key === 'configuration' ? (
                     <ConfigurationStep options={options} controller={controller} />
                   ) : null}
-                  {step === 2 ? <BathroomStep options={options} controller={controller} /> : null}
-                  {step === 3 ? <StyleStep options={options} controller={controller} /> : null}
+                  {STEPS[step].key === 'bathrooms' ? (
+                    <BathroomStep options={options} controller={controller} />
+                  ) : null}
+                  {STEPS[step].key === 'style' ? (
+                    <StyleStep options={options} controller={controller} />
+                  ) : null}
                 </div>
 
                 {/* The configuration step shows this beside its own budget. */}
-                {isBlocked && step !== 1 ? (
+                {isBlocked && STEPS[step].key !== 'configuration' ? (
                   <p
                     role="alert"
                     className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800"
@@ -196,7 +211,7 @@ export default function App() {
               </section>
             </div>
 
-            <SummaryPanel controller={controller} />
+            <SummaryPanel controller={controller} vastuOptions={options.vastu_principles} />
           </div>
         )}
       </main>

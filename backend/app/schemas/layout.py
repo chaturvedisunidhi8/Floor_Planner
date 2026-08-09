@@ -68,6 +68,13 @@ class GeneratedLayout(BaseModel):
     render_mode: str = Field(description="vector | flux | hybrid - how the image was produced")
     validation_warnings: list[str] = Field(default_factory=list)
     seed: int
+    #: ``None`` unless the brief asked for Vastu compliance.
+    vastu_score: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="How far this plan follows the chosen principles"
+    )
+    vastu_notes: list[str] = Field(
+        default_factory=list, description="Per-principle outcome, one line each"
+    )
 
 
 class GenerationResponse(BaseModel):
@@ -107,6 +114,8 @@ class OptionsResponse(BaseModel):
     features: list[OptionItem]
     styles: list[OptionItem]
     facings: list[OptionItem]
+    #: Directional rules offered by the optional Vastu step.
+    vastu_principles: list[OptionItem]
     plot_width_range: dict[str, float]
     plot_length_range: dict[str, float]
     #: Default length/width per room key - the wizard seeds its steppers here.

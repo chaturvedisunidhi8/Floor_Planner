@@ -4,10 +4,15 @@
  * The BHK selection drives which bedrooms are ticked, the two essential rooms
  * can never be unticked, and every ticked room carries a length and a width -
  * all three rules are enforced here so no step component has to know about them.
+ *
+ * Every stored dimension is in feet whatever unit the user is working in; the
+ * chosen unit lives beside the brief rather than inside it, because it changes
+ * how the form reads and not what is being asked for.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { BASE_UNIT, type UnitKey } from '@/lib/units';
 import type {
   BHKType,
   Facing,
@@ -18,6 +23,7 @@ import type {
   RangeSpec,
   RoomDefaults,
   RoomDimensions,
+  VastuPrinciple,
 } from '@/types/api';
 
 export const ESSENTIAL_ROOMS = ['living_room', 'kitchen'] as const;
@@ -38,9 +44,17 @@ const INITIAL: FloorPlanRequirements = {
   room_dimensions: {},
   bathrooms: { attached_count: 2, common_count: 1 },
   features: ['balcony', 'parking'],
+  vastu: { enabled: false, principles: [] },
   style: 'modern',
   notes: '',
 };
+
+/** Ticked for the user the first time they turn Vastu on. */
+const DEFAULT_VASTU_PRINCIPLES: VastuPrinciple[] = [
+  'pooja_northeast',
+  'kitchen_southeast',
+  'master_bedroom_southwest',
+];
 
 /** Used only until `/options` answers, and for a room the backend forgot to size. */
 const FALLBACK_DIMENSIONS: RoomDimensions = { length_ft: 10, width_ft: 10 };
@@ -67,6 +81,8 @@ function syncDimensions(
 
 export function useRequirements(options: OptionsResponse | null) {
   const [requirements, setRequirements] = useState<FloorPlanRequirements>(INITIAL);
+  // Display only - never sent, and never applied to the stored feet.
+  const [unit, setUnit] = useState<UnitKey>(BASE_UNIT);
 
   // Held in a ref so the setState callbacks below can reach the defaults
   // without every action depending on the options response.
@@ -148,7 +164,11 @@ export function useRequirements(options: OptionsResponse | null) {
 
   const setRoomDimensions = useCallback((room: string, patch: Partial<RoomDimensions>) => {
     const { min, max } = rangeRef.current;
-    const clamp = (value: number) => Math.min(max, Math.max(min, Math.round(value)));
+    // Kept to the nearest inch rather than the nearest foot: the steppers can
+    // be driven in metres or inches, and rounding to whole feet here would
+    // drag every such entry back off the value the user just set.
+    const clamp = (value: number) =>
+      Math.round(Math.min(max, Math.max(min, value)) * 100) / 100;
 
     setRequirements((current) => {
       const existing =
@@ -180,6 +200,38 @@ export function useRequirements(options: OptionsResponse | null) {
     }));
   }, []);
 
+  const setVastuEnabled = useCallback((enabled: boolean) => {
+    setRequirements((current) => ({
+      ...current,
+      vastu: {
+        enabled,
+        // Turning it on for the first time offers the three most common rules
+        // rather than an empty list that would quietly do nothing. A list the
+        // user has already edited is left exactly as they left it.
+        principles: enabled
+          ? current.vastu.principles.length > 0
+            ? current.vastu.principles
+            : DEFAULT_VASTU_PRINCIPLES
+          : current.vastu.principles,
+      },
+    }));
+  }, []);
+
+  const toggleVastuPrinciple = useCallback((principle: string) => {
+    setRequirements((current) => {
+      const selected = current.vastu.principles;
+      return {
+        ...current,
+        vastu: {
+          ...current.vastu,
+          principles: selected.includes(principle as VastuPrinciple)
+            ? selected.filter((p) => p !== principle)
+            : [...selected, principle as VastuPrinciple],
+        },
+      };
+    });
+  }, []);
+
   const setStyle = useCallback((style: InteriorStyle) => {
     setRequirements((current) => ({ ...current, style }));
   }, []);
@@ -188,10 +240,10 @@ export function useRequirements(options: OptionsResponse | null) {
     setRequirements((current) => ({ ...current, notes: notes.slice(0, 500) }));
   }, []);
 
-  const reset = useCallback(
-    () => setRequirements(syncDimensions(INITIAL, defaultsRef.current)),
-    [],
-  );
+  const reset = useCallback(() => {
+    setRequirements(syncDimensions(INITIAL, defaultsRef.current));
+    setUnit(BASE_UNIT);
+  }, []);
 
   const derived = useMemo(() => {
     const areaSqft = Math.round(requirements.plot.width_ft * requirements.plot.length_ft);
@@ -213,12 +265,17 @@ export function useRequirements(options: OptionsResponse | null) {
       totalBathrooms:
         requirements.bathrooms.attached_count + requirements.bathrooms.common_count,
       roomCount: requirements.rooms.length,
+      // Enabled with nothing ticked is treated as off by the backend, so the
+      // wizard should not claim otherwise either.
+      isVastuActive: requirements.vastu.enabled && requirements.vastu.principles.length > 0,
     };
   }, [requirements]);
 
   return {
     requirements,
     derived,
+    unit,
+    setUnit,
     setPlot,
     setShape,
     setFacing,
@@ -227,6 +284,8 @@ export function useRequirements(options: OptionsResponse | null) {
     setRoomDimensions,
     toggleFeature,
     setBathrooms,
+    setVastuEnabled,
+    toggleVastuPrinciple,
     setStyle,
     setNotes,
     reset,

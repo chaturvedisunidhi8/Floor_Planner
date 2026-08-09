@@ -13,6 +13,8 @@ from dataclasses import dataclass
 
 from app.geometry.layout_engine import LayoutPlan
 from app.geometry.primitives import Rect
+from app.geometry.vastu import RULES as VASTU_RULES
+from app.geometry.vastu import describe_zone
 from app.schemas.enums import InteriorStyle, RoomType
 from app.schemas.requirements import FloorPlanRequirements
 
@@ -90,6 +92,7 @@ class PromptBuilder:
             f"{plan.room_count} spaces",
             self._room_sentence(plan),
             self._adjacency_sentence(plan),
+            self._vastu_sentence(plan, req),
             self._feature_sentence(req),
             style_text,
             "thick solid black external walls, thinner internal partitions, quarter-circle door "
@@ -135,6 +138,32 @@ class PromptBuilder:
             if len(phrases) >= 3:
                 break
         return "; ".join(phrases).capitalize() if phrases else ""
+
+    @staticmethod
+    def _vastu_sentence(plan: LayoutPlan, req: FloorPlanRequirements) -> str:
+        """State where the governed rooms actually ended up, north being up.
+
+        Describing the drawn positions rather than the client's wish list keeps
+        the prompt honest: if the engine could not get the kitchen into the
+        south-east, the image should not claim otherwise.
+        """
+        if not req.vastu.is_active:
+            return ""
+
+        governed = {
+            room_type
+            for principle in req.vastu.principles
+            if (rule := VASTU_RULES.get(principle))
+            for room_type in rule.rooms
+        }
+        placements = [
+            f"{room.name.lower()} in the {describe_zone(room, plan.plot_width, plan.plot_length)}"
+            for room in plan.rooms
+            if room.type in governed
+        ]
+        if not placements:
+            return ""
+        return "Vastu-oriented plan drawn with north at the top, " + ", ".join(placements[:4])
 
     @staticmethod
     def _feature_sentence(req: FloorPlanRequirements) -> str:

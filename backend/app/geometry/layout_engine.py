@@ -14,6 +14,8 @@ The pipeline for one variation:
    different rather than a recolour of the same plan.
 5. **Align & repair** - snap every edge to shared wall lines, resolve any
    overlap the variation introduced, and grow the envelope to the plot edges.
+6. **Orient** - when the brief asks for Vastu, reflect the finished plan into
+   the compass orientation that best satisfies the chosen principles.
 
 Everything is driven by a seeded ``random.Random``, so a given
 (template, seed) pair always yields the same plan - essential for
@@ -49,6 +51,11 @@ from app.geometry.validator import (
     rebalance_room_sizes,
     resize_to_targets,
 )
+from app.geometry.vastu import RULES as VASTU_RULES
+from app.geometry.vastu import ZONE_TARGETS as VASTU_ZONE_TARGETS
+from app.geometry.vastu import VastuReport
+from app.geometry.vastu import comply as comply_with_vastu
+from app.geometry.vastu import zone_score as vastu_zone_score
 from app.schemas.enums import RoomType
 from app.schemas.requirements import FloorPlanRequirements
 from app.schemas.template import FloorPlanTemplate
@@ -113,6 +120,8 @@ class LayoutPlan:
     variation: str
     seed: int
     warnings: list[str]
+    #: ``None`` when the brief asked for no Vastu compliance.
+    vastu: VastuReport | None = None
 
     @property
     def built_up_sqft(self) -> float:
@@ -185,6 +194,7 @@ class LayoutEngine:
         rooms = resize_to_targets(
             rooms, targets, plot_width=self._w, plot_length=self._l
         )
+        rooms, vastu = self._orient_for_vastu(rooms)
 
         report = self._validator.validate(rooms)
         if not report.ok:
@@ -207,7 +217,31 @@ class LayoutEngine:
             variation=variation,
             seed=seed,
             warnings=report.all_messages(),
+            vastu=vastu,
         )
+
+    def _orient_for_vastu(self, rooms: list[Rect]) -> tuple[list[Rect], VastuReport | None]:
+        """Turn the finished plan to face the compass, if the brief asked for it.
+
+        Runs last, on geometry that is already valid: reflecting the plan and
+        relabelling two same-sized service rooms both leave every wall line,
+        adjacency and room size exactly as they were. Nothing earlier in the
+        pipeline needs to know about Vastu, and a brief that does not want it
+        is untouched.
+        """
+        if not self._req.vastu.is_active:
+            return rooms, None
+
+        oriented, report = comply_with_vastu(
+            rooms, self._w, self._l, self._req.vastu.principles
+        )
+        logger.debug(
+            "Vastu orientation scored %.2f (%d of %d principles met)",
+            report.score,
+            len(report.satisfied),
+            len(report.satisfied) + len(report.unmet),
+        )
+        return oriented, report
 
     # --- 1 & 2: orientation and instantiation -------------------------------
     def _orient_and_scale(self, template: FloorPlanTemplate) -> list[Rect]:
@@ -443,7 +477,7 @@ class LayoutEngine:
             if not candidates:
                 continue
 
-            host = max(candidates, key=lambda r: r.area)
+            host = self._pick_host(candidates, room_type)
             new_room, pieces = self._split(host, room_type, needed, rng)
             if new_room is None:
                 continue
@@ -451,6 +485,36 @@ class LayoutEngine:
 
         logger.debug("Could not carve space for %s", room_type.value)
         return rooms
+
+    def _pick_host(self, candidates: list[Rect], room_type: RoomType) -> Rect:
+        """Choose which room to carve the new one out of.
+
+        The largest host is the safe default - it has the most to give. Under
+        Vastu the host also has to be in the right part of the plan, since the
+        final reflection can turn the whole drawing but cannot move one room
+        across it: a prayer room carved from the southern wing stays in the
+        south whichever way the plan is flipped.
+        """
+        zone = self._vastu_zone(room_type)
+        if zone is None:
+            return max(candidates, key=lambda r: r.area)
+
+        largest = max(r.area for r in candidates)
+        return max(
+            candidates,
+            # Area still counts, but only as the tie-breaker it now is.
+            key=lambda r: (vastu_zone_score(r, self._w, self._l, zone), r.area / largest),
+        )
+
+    def _vastu_zone(self, room_type: RoomType) -> str | None:
+        """The compass zone the brief wants this room in, if any."""
+        if not self._req.vastu.is_active:
+            return None
+        for principle in self._req.vastu.principles:
+            rule = VASTU_RULES.get(principle)
+            if rule is not None and room_type in rule.rooms:
+                return rule.zone
+        return None
 
     def _is_valid_host(self, host: Rect, room_type: RoomType) -> bool:
         """Outdoor space only makes sense against an external wall.
@@ -492,11 +556,20 @@ class LayoutEngine:
         elif edge in ("bottom", "top"):
             horizontal = False
 
+        # Which half of the host Vastu wants the slice taken from, if either.
+        # ``None`` leaves the choice to the seeded RNG, as it always was.
+        towards = VASTU_ZONE_TARGETS.get(self._vastu_zone(room_type) or "")
+
         if horizontal:
             slice_w = snap(min(max(needed, target_area / host.height), host.width - needed))
             if slice_w < needed or (host.width - slice_w) * host.height < host_floor:
                 return None, []
-            from_left = edge == "left" if edge in ("left", "right") else rng.random() < 0.5
+            if edge in ("left", "right"):
+                from_left = edge == "left"
+            elif towards is not None:
+                from_left = towards[0] < 0.5  # west
+            else:
+                from_left = rng.random() < 0.5
             x = host.x if from_left else host.x2 - slice_w
             new = Rect(room_type, room_type.label, x, host.y, slice_w, host.height)
             rest = (
@@ -508,7 +581,12 @@ class LayoutEngine:
             slice_h = snap(min(max(needed, target_area / host.width), host.height - needed))
             if slice_h < needed or host.width * (host.height - slice_h) < host_floor:
                 return None, []
-            from_bottom = edge == "bottom" if edge in ("bottom", "top") else rng.random() < 0.5
+            if edge in ("bottom", "top"):
+                from_bottom = edge == "bottom"
+            elif towards is not None:
+                from_bottom = towards[1] < 0.5  # south
+            else:
+                from_bottom = rng.random() < 0.5
             y = host.y if from_bottom else host.y2 - slice_h
             new = Rect(room_type, room_type.label, host.x, y, host.width, slice_h)
             rest = (

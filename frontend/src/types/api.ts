@@ -9,6 +9,14 @@ export type BHKType = '1BHK' | '2BHK' | '3BHK' | '4BHK';
 export type InteriorStyle = 'modern' | 'minimal' | 'luxury' | 'traditional';
 export type Facing = 'north' | 'south' | 'east' | 'west' | 'any';
 
+export type VastuPrinciple =
+  | 'pooja_northeast'
+  | 'kitchen_southeast'
+  | 'master_bedroom_southwest'
+  | 'living_northeast'
+  | 'bathrooms_northwest'
+  | 'storage_southwest';
+
 export interface OptionItem {
   value: string;
   label: string;
@@ -38,6 +46,7 @@ export interface OptionsResponse {
   features: OptionItem[];
   styles: OptionItem[];
   facings: OptionItem[];
+  vastu_principles: OptionItem[];
   plot_width_range: RangeSpec;
   plot_length_range: RangeSpec;
   room_defaults: RoomDefaults;
@@ -58,6 +67,12 @@ export interface BathroomRequirements {
   common_count: number;
 }
 
+/** Optional directional constraints. `principles` is ignored while disabled. */
+export interface VastuPreferences {
+  enabled: boolean;
+  principles: VastuPrinciple[];
+}
+
 export interface FloorPlanRequirements {
   plot: PlotDetails;
   bhk: BHKType;
@@ -66,6 +81,7 @@ export interface FloorPlanRequirements {
   room_dimensions: Record<string, RoomDimensions>;
   bathrooms: BathroomRequirements;
   features: string[];
+  vastu: VastuPreferences;
   style: InteriorStyle;
   notes: string;
 }
@@ -136,6 +152,9 @@ export interface GeneratedLayout {
   render_mode: string;
   validation_warnings: string[];
   seed: number;
+  /** Null unless the brief asked for Vastu compliance. */
+  vastu_score: number | null;
+  vastu_notes: string[];
 }
 
 export interface GenerationResponse {
