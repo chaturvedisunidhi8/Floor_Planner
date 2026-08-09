@@ -11,6 +11,7 @@ from fastapi import APIRouter
 from app.schemas.enums import (
     SELECTABLE_FEATURES,
     SELECTABLE_ROOMS,
+    SELECTABLE_VASTU_PRINCIPLES,
     BHKType,
     Facing,
     InteriorStyle,
@@ -46,6 +47,15 @@ FEATURE_HINTS = {
     "garden": "Landscaped open area",
     "staircase": "Internal stair to an upper floor",
     "wash_area": "Outdoor washing and drying area",
+}
+
+VASTU_HINTS = {
+    "pooja_northeast": "The Ishanya corner - traditionally the most auspicious for prayer",
+    "kitchen_southeast": "The Agni corner, associated with fire",
+    "master_bedroom_southwest": "The heaviest zone, for stability and rest",
+    "living_northeast": "Opens the social core to morning light",
+    "bathrooms_northwest": "Keeps drainage away from the north-east",
+    "storage_southwest": "Weight in the south-west, light spaces in the north-east",
 }
 
 STYLE_HINTS = {
@@ -86,6 +96,10 @@ def options() -> OptionsResponse:
         facings=[
             OptionItem(value=f.value, label=f.value.title(), description="")
             for f in Facing
+        ],
+        vastu_principles=[
+            OptionItem(value=p.value, label=p.label, description=VASTU_HINTS.get(p.value, ""))
+            for p in SELECTABLE_VASTU_PRINCIPLES
         ],
         plot_width_range={"min": MIN_PLOT_FT, "max": MAX_PLOT_FT, "step": 1, "default": 30},
         plot_length_range={"min": MIN_PLOT_FT, "max": MAX_PLOT_FT, "step": 1, "default": 45},

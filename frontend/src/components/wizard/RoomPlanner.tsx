@@ -7,6 +7,7 @@
 
 import { RoomDimensionCard } from '@/components/wizard/RoomDimensionCard';
 import { cn } from '@/lib/cn';
+import { BASE_UNIT, areaAbbr, formatArea, type UnitKey } from '@/lib/units';
 import type { OptionsResponse, RoomDimensions } from '@/types/api';
 
 export const OVER_ALLOCATION_MESSAGE =
@@ -17,6 +18,8 @@ interface RoomPlannerProps {
   selected: string[];
   locked: readonly string[];
   dimensions: Record<string, RoomDimensions>;
+  /** The unit the sizes are shown and edited in; they are stored in feet. */
+  unit?: UnitKey;
   onToggle: (room: string) => void;
   onDimensionsChange: (room: string, patch: Partial<RoomDimensions>) => void;
 }
@@ -26,6 +29,7 @@ export function RoomPlanner({
   selected,
   locked,
   dimensions,
+  unit = BASE_UNIT,
   onToggle,
   onDimensionsChange,
 }: RoomPlannerProps) {
@@ -42,6 +46,7 @@ export function RoomPlanner({
             options.room_defaults[option.value] ?? { length_ft: 10, width_ft: 10 }
           }
           range={options.room_dimension_range}
+          unit={unit}
           onToggle={onToggle}
           onDimensionsChange={onDimensionsChange}
         />
@@ -55,6 +60,7 @@ interface AreaBudgetProps {
   allocatedSqft: number;
   remainingSqft: number;
   isOverAllocated: boolean;
+  unit?: UnitKey;
 }
 
 export function AreaBudget({
@@ -62,13 +68,14 @@ export function AreaBudget({
   allocatedSqft,
   remainingSqft,
   isOverAllocated,
+  unit = BASE_UNIT,
 }: AreaBudgetProps) {
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-2">
-        <Stat label="Available area" value={availableSqft} />
-        <Stat label="Allocated" value={allocatedSqft} />
-        <Stat label="Remaining" value={remainingSqft} negative={isOverAllocated} />
+        <Stat label="Available area" value={availableSqft} unit={unit} />
+        <Stat label="Allocated" value={allocatedSqft} unit={unit} />
+        <Stat label="Remaining" value={remainingSqft} unit={unit} negative={isOverAllocated} />
       </div>
 
       {isOverAllocated ? (
@@ -86,10 +93,12 @@ export function AreaBudget({
 function Stat({
   label,
   value,
+  unit,
   negative = false,
 }: {
   label: string;
   value: number;
+  unit: UnitKey;
   negative?: boolean;
 }) {
   return (
@@ -113,8 +122,8 @@ function Stat({
           negative ? 'text-red-800' : 'text-blueprint-900',
         )}
       >
-        {value.toLocaleString()}
-        <span className="ml-1 text-xs font-medium">sq ft</span>
+        {formatArea(value, unit)}
+        <span className="ml-1 text-xs font-medium">{areaAbbr(unit)}</span>
       </span>
     </div>
   );

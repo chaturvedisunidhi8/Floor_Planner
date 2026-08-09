@@ -33,6 +33,8 @@ interface SliderProps {
   max: number;
   step?: number;
   unit?: string;
+  /** Formats the value and the two end labels. Defaults to the raw number. */
+  format?: (value: number) => string;
   onChange: (value: number) => void;
   disabled?: boolean;
 }
@@ -44,6 +46,7 @@ export function Slider({
   max,
   step = 1,
   unit = 'ft',
+  format = String,
   onChange,
   disabled = false,
 }: SliderProps) {
@@ -55,7 +58,7 @@ export function Slider({
           {label}
         </label>
         <span className="font-mono text-sm font-semibold tabular-nums text-blueprint-700">
-          {value}
+          {format(value)}
           {unit ? ` ${unit}` : ''}
         </span>
       </div>
@@ -72,10 +75,10 @@ export function Slider({
       />
       <div className="flex justify-between text-[11px] text-ink-400">
         <span>
-          {min} {unit}
+          {format(min)} {unit}
         </span>
         <span>
-          {max} {unit}
+          {format(max)} {unit}
         </span>
       </div>
     </div>
@@ -225,6 +228,51 @@ export function Select({ label, value, options, onChange }: SelectProps) {
   );
 }
 
+interface ToggleProps {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}
+
+/** An on/off switch for a whole section, labelled and operable from the keyboard. */
+export function Toggle({ label, hint, checked, onChange }: ToggleProps) {
+  const id = useId();
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between gap-4 rounded-xl border px-4 py-3 transition',
+        checked ? 'border-blueprint-600 bg-blueprint-50' : 'border-ink-200 bg-white',
+      )}
+    >
+      <label htmlFor={id} className="min-w-0 cursor-pointer">
+        <span className="block text-sm font-medium text-ink-800">{label}</span>
+        {hint ? <span className="mt-0.5 block text-xs text-ink-500">{hint}</span> : null}
+      </label>
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        onClick={() => onChange(!checked)}
+        className={cn(
+          'relative h-6 w-11 shrink-0 rounded-full transition',
+          checked ? 'bg-blueprint-700' : 'bg-ink-300',
+        )}
+      >
+        <span
+          aria-hidden
+          className={cn(
+            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all',
+            checked ? 'left-[22px]' : 'left-0.5',
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
 interface CounterProps {
   label: string;
   value: number;
@@ -277,6 +325,8 @@ interface NumberStepperProps {
   max: number;
   step?: number;
   unit?: string;
+  /** Decimal places to keep - a metre step of 0.1 needs 2, feet need none. */
+  decimals?: number;
   disabled?: boolean;
   onChange: (value: number) => void;
 }
@@ -295,12 +345,17 @@ export function NumberStepper({
   max,
   step = 1,
   unit = 'ft',
+  decimals = 0,
   disabled = false,
   onChange,
 }: NumberStepperProps) {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
-  const clamp = (next: number) => Math.min(max, Math.max(min, Math.round(next / step) * step));
+  // Snapping to the step is what leaves 0.1 x 34 as 3.4000000000000004, so the
+  // rounding has to happen here rather than only where the value is shown.
+  const round = (next: number) => Number(next.toFixed(decimals));
+  const clamp = (next: number) =>
+    round(Math.min(max, Math.max(min, Math.round(next / step) * step)));
 
   const nudge = (delta: number) => {
     setDraft(null);
@@ -335,7 +390,7 @@ export function NumberStepper({
             max={max}
             step={step}
             disabled={disabled}
-            value={draft ?? value}
+            value={draft ?? round(value)}
             onChange={(event) => {
               const raw = event.target.value;
               setDraft(raw);

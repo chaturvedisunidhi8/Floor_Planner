@@ -117,3 +117,36 @@ class Facing(str, Enum):
     EAST = "east"
     WEST = "west"
     ANY = "any"
+
+
+class VastuPrinciple(str, Enum):
+    """The directional rules the planner knows how to honour.
+
+    Each one names a room family and the compass zone Vastu Shastra places it
+    in. Plans are drawn north-up (see :mod:`app.geometry.vastu`), so every rule
+    here is a statement about where a room should sit on the drawing.
+    """
+
+    POOJA_NORTHEAST = "pooja_northeast"
+    KITCHEN_SOUTHEAST = "kitchen_southeast"
+    MASTER_BEDROOM_SOUTHWEST = "master_bedroom_southwest"
+    LIVING_NORTHEAST = "living_northeast"
+    BATHROOMS_NORTHWEST = "bathrooms_northwest"
+    STORAGE_SOUTHWEST = "storage_southwest"
+
+    @property
+    def label(self) -> str:
+        return _VASTU_LABELS[self]
+
+
+_VASTU_LABELS: dict[VastuPrinciple, str] = {
+    VastuPrinciple.POOJA_NORTHEAST: "Pooja room in the north-east",
+    VastuPrinciple.KITCHEN_SOUTHEAST: "Kitchen in the south-east",
+    VastuPrinciple.MASTER_BEDROOM_SOUTHWEST: "Master bedroom in the south-west",
+    VastuPrinciple.LIVING_NORTHEAST: "Living room towards the north-east",
+    VastuPrinciple.BATHROOMS_NORTHWEST: "Bathrooms towards the north-west",
+    VastuPrinciple.STORAGE_SOUTHWEST: "Heavy storage in the south-west",
+}
+
+#: The principles offered in the wizard, in the order they are shown.
+SELECTABLE_VASTU_PRINCIPLES: tuple[VastuPrinciple, ...] = tuple(VastuPrinciple)

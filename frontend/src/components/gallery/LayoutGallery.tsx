@@ -143,6 +143,11 @@ function LayoutCard({ layout, index, compact, isSelected, onSelect, onPreview }:
           <Badge tone="blueprint">{Math.round(layout.match_score * 100)}% match</Badge>
           <Badge>{layout.rooms.length} spaces</Badge>
           <Badge>{layout.render_mode}</Badge>
+          {layout.vastu_score !== null ? (
+            <Badge tone="blueprint" title={layout.vastu_notes.join('\n')}>
+              {Math.round(layout.vastu_score * 100)}% vastu
+            </Badge>
+          ) : null}
         </div>
 
         <p className="text-xs text-ink-400">
@@ -169,12 +174,15 @@ function LayoutCard({ layout, index, compact, isSelected, onSelect, onPreview }:
 function Badge({
   children,
   tone = 'neutral',
+  title,
 }: {
   children: React.ReactNode;
   tone?: 'neutral' | 'blueprint';
+  title?: string;
 }) {
   return (
     <span
+      title={title}
       className={cn(
         'rounded-md px-2 py-0.5 text-xs font-medium capitalize',
         tone === 'blueprint' ? 'bg-blueprint-100 text-blueprint-800' : 'bg-ink-100 text-ink-600',

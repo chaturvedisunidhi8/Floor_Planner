@@ -13,11 +13,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.schemas.enums import (
     SELECTABLE_FEATURES,
     SELECTABLE_ROOMS,
+    SELECTABLE_VASTU_PRINCIPLES,
     BHKType,
     Facing,
     InteriorStyle,
     PlotShape,
     RoomType,
+    VastuPrinciple,
 )
 
 MIN_PLOT_FT = 15
@@ -154,6 +156,53 @@ class BathroomRequirements(BaseModel):
         return ", ".join(parts) or "no dedicated bathrooms"
 
 
+class VastuPreferences(BaseModel):
+    """Whether - and how far - the plan should follow Vastu Shastra.
+
+    Entirely optional: with ``enabled`` off the geometry engine behaves exactly
+    as it did before this existed, which is why the toggle rather than the
+    principle list is what gates the whole feature.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    principles: list[VastuPrinciple] = Field(
+        default_factory=list,
+        description="Directional rules to honour. Ignored while `enabled` is false.",
+    )
+
+    @model_validator(mode="after")
+    def _normalise(self) -> VastuPreferences:
+        if not self.enabled:
+            object.__setattr__(self, "principles", [])
+            return self
+
+        allowed = set(SELECTABLE_VASTU_PRINCIPLES)
+        principles = [p for p in dict.fromkeys(self.principles) if p in allowed]
+        # Asking for Vastu without saying which rules matter means "the usual
+        # ones" rather than "none", which would silently do nothing at all.
+        object.__setattr__(self, "principles", principles or list(DEFAULT_VASTU_PRINCIPLES))
+        return self
+
+    @property
+    def is_active(self) -> bool:
+        return self.enabled and bool(self.principles)
+
+    def describe(self) -> str:
+        if not self.is_active:
+            return "no Vastu constraints"
+        return "Vastu: " + ", ".join(p.label.lower() for p in self.principles)
+
+
+#: Applied when the client enables Vastu without picking any specific rule.
+DEFAULT_VASTU_PRINCIPLES: tuple[VastuPrinciple, ...] = (
+    VastuPrinciple.POOJA_NORTHEAST,
+    VastuPrinciple.KITCHEN_SOUTHEAST,
+    VastuPrinciple.MASTER_BEDROOM_SOUTHWEST,
+)
+
+
 class FloorPlanRequirements(BaseModel):
     """Complete, validated user intent. This is what the AI agent reasons over."""
 
@@ -168,6 +217,7 @@ class FloorPlanRequirements(BaseModel):
     )
     bathrooms: BathroomRequirements = Field(default_factory=BathroomRequirements)
     features: list[RoomType] = Field(default_factory=list, description="Balcony/parking/garden/...")
+    vastu: VastuPreferences = Field(default_factory=VastuPreferences)
     style: InteriorStyle = InteriorStyle.MODERN
     notes: str = Field(default="", max_length=500, description="Optional free-text nuance")
 
@@ -279,11 +329,14 @@ class FloorPlanRequirements(BaseModel):
         """Natural-language projection used to embed the request for FAISS."""
         rooms = ", ".join(r.label for r in self.rooms)
         features = ", ".join(f.label for f in self.features) or "none"
+        # Spelling the principles out steers retrieval towards the templates
+        # whose descriptions already talk about corner placement.
+        vastu = f"{self.vastu.describe()}. " if self.vastu.is_active else ""
         return (
             f"{self.bhk.value} residential floor plan on a {self.plot.describe()}. "
             f"Rooms: {rooms}. Bathrooms: {self.bathrooms.describe()}. "
             f"Additional features: {features}. Interior style: {self.style.label}. "
-            f"Facing: {self.plot.facing.value}. {self.notes}".strip()
+            f"Facing: {self.plot.facing.value}. {vastu}{self.notes}".strip()
         )
 
 

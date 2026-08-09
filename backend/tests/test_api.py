@@ -227,3 +227,49 @@ def test_square_plot_is_normalised(client, brief) -> None:
     }
     body = client.post(f"{PREFIX}/generate", json=payload).json()
     assert body["layouts"][0]["plot_width_ft"] == body["layouts"][0]["plot_length_ft"] == 30
+
+
+# --- Vastu ----------------------------------------------------------------
+def test_options_offer_the_vastu_principles(client) -> None:
+    body = client.get(f"{PREFIX}/options").json()
+    values = {p["value"] for p in body["vastu_principles"]}
+    assert {"pooja_northeast", "kitchen_southeast", "master_bedroom_southwest"} <= values
+    assert all(p["label"] and p["description"] for p in body["vastu_principles"])
+
+
+def test_a_brief_without_vastu_generates_layouts_that_do_not_mention_it(generated) -> None:
+    for layout in generated["layouts"]:
+        assert layout["vastu_score"] is None
+        assert layout["vastu_notes"] == []
+
+
+def test_a_vastu_brief_is_scored_and_explained(client, brief) -> None:
+    payload = {**brief, "requirements": {**brief["requirements"]}, "variants": 2}
+    payload["requirements"]["rooms"] = [*brief["requirements"]["rooms"], "pooja_room"]
+    payload["requirements"]["vastu"] = {
+        "enabled": True,
+        "principles": ["pooja_northeast", "kitchen_southeast", "master_bedroom_southwest"],
+    }
+
+    body = client.post(f"{PREFIX}/generate", json=payload).json()
+    layouts = body["layouts"]
+    assert len(layouts) == 2
+    for layout in layouts:
+        assert 0.0 <= layout["vastu_score"] <= 1.0
+        assert len(layout["vastu_notes"]) == 3
+    # The client is ranking on compliance, so the best plan leads the gallery.
+    assert layouts[0]["vastu_score"] >= layouts[1]["vastu_score"]
+
+
+def test_vastu_left_out_of_the_payload_is_simply_off(client, brief) -> None:
+    """The field is new, so an older client must still be a valid request."""
+    payload = {**brief, "variants": 1}
+    assert "vastu" not in payload["requirements"]
+    body = client.post(f"{PREFIX}/generate", json=payload).json()
+    assert body["layouts"][0]["vastu_score"] is None
+
+
+def test_an_unknown_vastu_principle_is_rejected(client, brief) -> None:
+    payload = {**brief, "requirements": {**brief["requirements"]}, "variants": 1}
+    payload["requirements"]["vastu"] = {"enabled": True, "principles": ["kitchen_in_the_moon"]}
+    assert client.post(f"{PREFIX}/generate", json=payload).status_code == 422

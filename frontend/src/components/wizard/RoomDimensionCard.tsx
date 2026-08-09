@@ -8,6 +8,16 @@
 
 import { NumberStepper } from '@/components/ui/controls';
 import { cn } from '@/lib/cn';
+import {
+  BASE_UNIT,
+  areaAbbr,
+  convertRange,
+  formatArea,
+  toFeet,
+  toUnit,
+  unit as unitOf,
+  type UnitKey,
+} from '@/lib/units';
 import type { OptionItem, RangeSpec, RoomDimensions } from '@/types/api';
 
 export interface RoomDimensionCardProps {
@@ -17,6 +27,8 @@ export interface RoomDimensionCardProps {
   locked?: boolean;
   dimensions: RoomDimensions;
   range: RangeSpec;
+  /** The unit the steppers read in; `dimensions` is always in feet. */
+  unit?: UnitKey;
   onToggle: (room: string) => void;
   onDimensionsChange: (room: string, patch: Partial<RoomDimensions>) => void;
 }
@@ -27,11 +39,14 @@ export function RoomDimensionCard({
   locked = false,
   dimensions,
   range,
+  unit = BASE_UNIT,
   onToggle,
   onDimensionsChange,
 }: RoomDimensionCardProps) {
-  const area = Math.round(dimensions.length_ft * dimensions.width_ft);
+  const area = dimensions.length_ft * dimensions.width_ft;
   const panelId = `room-dimensions-${option.value}`;
+  const bounds = convertRange(range, unit);
+  const { abbr, decimals } = unitOf(unit);
 
   return (
     <div
@@ -64,7 +79,7 @@ export function RoomDimensionCard({
             </span>
             {selected ? (
               <span className="shrink-0 font-mono text-xs font-semibold tabular-nums text-blueprint-700">
-                {area.toLocaleString()} sq ft
+                {formatArea(area, unit)} {areaAbbr(unit)}
               </span>
             ) : null}
           </span>
@@ -89,21 +104,29 @@ export function RoomDimensionCard({
           <div className="grid grid-cols-2 gap-3 border-t border-blueprint-200/70 px-3 py-3">
             <NumberStepper
               label="Length"
-              value={dimensions.length_ft}
-              min={range.min}
-              max={range.max}
-              step={range.step}
+              value={toUnit(dimensions.length_ft, unit)}
+              min={bounds.min}
+              max={bounds.max}
+              step={bounds.step}
+              unit={abbr}
+              decimals={decimals}
               disabled={!selected}
-              onChange={(length_ft) => onDimensionsChange(option.value, { length_ft })}
+              onChange={(length) =>
+                onDimensionsChange(option.value, { length_ft: toFeet(length, unit) })
+              }
             />
             <NumberStepper
               label="Width"
-              value={dimensions.width_ft}
-              min={range.min}
-              max={range.max}
-              step={range.step}
+              value={toUnit(dimensions.width_ft, unit)}
+              min={bounds.min}
+              max={bounds.max}
+              step={bounds.step}
+              unit={abbr}
+              decimals={decimals}
               disabled={!selected}
-              onChange={(width_ft) => onDimensionsChange(option.value, { width_ft })}
+              onChange={(width) =>
+                onDimensionsChange(option.value, { width_ft: toFeet(width, unit) })
+              }
             />
           </div>
         </div>

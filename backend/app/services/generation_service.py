@@ -152,6 +152,12 @@ class GenerationService:
             )
             layouts.append(layout)
 
+        if requirements.vastu.is_active:
+            # A client who asked for Vastu is ranking on it, so lead with the
+            # plan that follows it best rather than with the closest template
+            # match. Sorting is stable, so match order still breaks ties.
+            layouts.sort(key=lambda layout: layout.vastu_score or 0.0, reverse=True)
+
         return layouts
 
     def _render_layout(
@@ -208,6 +214,8 @@ class GenerationService:
             render_mode=rendered.mode,
             validation_warnings=plan.warnings,
             seed=plan.seed,
+            vastu_score=plan.vastu.score if plan.vastu else None,
+            vastu_notes=plan.vastu.notes if plan.vastu else [],
         )
 
     @staticmethod
