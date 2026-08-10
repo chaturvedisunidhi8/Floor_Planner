@@ -153,6 +153,17 @@ def _feet_inches(value: float) -> str:
     return f"{feet}'{inches}\"" if inches else f"{feet}'"
 
 
+def _dimension_metrics(ppf: float) -> tuple[float, float, int]:
+    """``(offset, tick, font_size)`` for the overall dimension lines."""
+    return max(18.0, ppf * 1.8), max(5.0, ppf * 0.5), int(max(13, ppf * 1.35))
+
+
+def _dimension_headroom(ppf: float) -> float:
+    """Space the width dimension line and its label occupy above the plan."""
+    offset, tick, font_size = _dimension_metrics(ppf)
+    return offset + tick + 4 + font_size * 1.15
+
+
 def _load_font(size: int, bold: bool = False) -> ImageFont.ImageFont:
     candidates = (
         ["arialbd.ttf", "Arial Bold.ttf", "DejaVuSans-Bold.ttf", "seguisb.ttf"]
@@ -232,19 +243,32 @@ class FloorPlanRenderer:
         draw = ImageDraw.Draw(image)
 
         margin_x = int(w * 0.085)
-        # Leaves room for the title, the subtitle and the width dimension line
-        # stacked above the drawing without any of them colliding.
-        margin_top = int(h * 0.165)
         margin_bottom = int(h * 0.105)
-
         avail_w = w - 2 * margin_x
-        avail_h = h - margin_top - margin_bottom
-        ppf = min(avail_w / plan.plot_width, avail_h / plan.plot_length)
+
+        # Bottom of the title/subtitle stack that _draw_title_block paints.
+        header_bottom = h * 0.036 + h * 0.032 * 1.25
+        if subtitle:
+            header_bottom = h * 0.036 + h * 0.040 + h * 0.019 * 1.25
+
+        # The width dimension line and its label sit above the drawing, and both
+        # scale with ppf - which in turn depends on the top margin. Iterating
+        # converges quickly: a taller margin means a smaller scale, which needs
+        # less headroom, so the label can never grow back into the subtitle. A
+        # plan that is already centred low enough keeps the base margin.
+        margin_top = int(h * 0.165)
+        for _ in range(4):
+            avail_h = h - margin_top - margin_bottom
+            ppf = min(avail_w / plan.plot_width, avail_h / plan.plot_length)
+            plan_h = plan.plot_length * ppf
+            origin_y = margin_top + (avail_h - plan_h) / 2
+            required = header_bottom + h * 0.012 + _dimension_headroom(ppf)
+            if origin_y >= required:
+                break
+            margin_top = int(required)
 
         plan_w = plan.plot_width * ppf
-        plan_h = plan.plot_length * ppf
         origin_x = (w - plan_w) / 2
-        origin_y = margin_top + (avail_h - plan_h) / 2
 
         def px(fx: float, fy: float) -> tuple[float, float]:
             """Plot feet -> canvas pixels (y flips: +y is up on the plan)."""
@@ -603,9 +627,8 @@ class FloorPlanRenderer:
         ppf: float,
         palette: Palette,
     ) -> None:
-        offset = max(18.0, ppf * 1.8)
-        font = _load_font(int(max(13, ppf * 1.35)), bold=True)
-        tick = max(5.0, ppf * 0.5)
+        offset, tick, font_size = _dimension_metrics(ppf)
+        font = _load_font(font_size, bold=True)
 
         # Width, above the plan.
         y = oy - offset
