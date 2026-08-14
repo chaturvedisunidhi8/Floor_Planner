@@ -208,12 +208,74 @@ cd backend
 python -m pytest
 ```
 
-185 tests, no credentials or network needed. They cover the knowledge base
+435 tests, no credentials or network needed. They cover the knowledge base
 (overlaps, containment, bedroom counts), the geometry engine (every template
 against every BHK — validity, no overlaps, no unassigned floor, outdoor space on
 an external wall, balanced proportions, determinism, distinct variations), the
-scorer, the prompt builder, the image pipeline's fallback behaviour, and the API
-contract including path-traversal defence.
+access model and doors (adjacency graph, one modeled door per access edge,
+door-graph walkability from the entrance, the strict validation gate), the
+scorer, the prompt builder, the image pipeline's fallback behaviour, the API
+contract including path-traversal defence, and the topology search (candidate
+generation invariants, base-order preservation, never-worse-than-base, and the
+search audit trail).
+
+---
+
+## Benchmarking
+
+`backend/scripts/benchmark.py` runs both engines against a fixed corpus of briefs
+(narrow/deep 1BHK–4BHK shapes plus two briefs that are provably infeasible) and
+reports per-brief and corpus-wide metrics:
+
+```bash
+cd backend
+python scripts/benchmark.py --engine both --variants 2 --report ../benchmarks/engine_comparison.json
+```
+
+Metrics include room-area and dimension error, connectivity (fraction of indoor
+rooms reachable from circulation), door-connectivity (reachable *through the
+modeled doors*), door-satisfied (fraction of access requirements that actually
+received a door), overlap, coverage, corridor, wall-clock time, and
+**feasibility** — the fraction of attempts whose verdict matched the corpus
+label (an infeasible brief refused, a feasible brief built). The solver engine
+holds 100% connectivity, 100% door-satisfied, and 100% feasibility on the
+corpus; the legacy engine never says "no", so its feasibility sits at 80%.
+
+### Topology search
+
+The solver engine no longer solves a single arrangement per (brief, template).
+For each brief it now generates several **candidate topologies** — the original
+programme plus soft spatial-zoning variants (bedrooms vs the social core pushed
+to opposite halves of the plot) and deterministic room-order permutations — gives
+each candidate the solver budget, scores the survivors with the architectural
+scorer and returns the best plan. The hard guarantees are untouched: every
+candidate carries the *same* room set and the *same* access edge set (the
+en-suite pairing is ranked by bedroom priority, not spec order, so it survives
+permutation), every survivor runs the strict validation gate before it can win,
+and the winner is always re-ordered back into the base programme's room order.
+
+```bash
+cd backend
+python scripts/topology_report.py --candidates 3   # before/after in one run
+python scripts/benchmark.py --engine solver --topology-candidates 3
+```
+
+The search is configurable in `app/core/config.py`:
+
+* `topology_candidates` — how many candidates per brief (default 5; `1` exactly
+  reproduces the pre-search engine).
+* `topology_zoning` / `topology_permutations` — the two diversity sources.
+* `topology_bias_weight` — the soft objective credit that steers a zoning
+  candidate (default 20; never a hard constraint).
+
+Every solver plan carries its own search audit trail (`plan.topology_search`):
+one entry per candidate with its label, verdict (`feasible` / `pruned` /
+`infeasible` / `timeout`), score for survivors, and the validation errors that
+pruned a candidate. `scripts/topology_report.py` aggregates that trail into the
+before/after milestone numbers (base score vs best score, unique topologies,
+pruned count, unique layouts). The search multiplies the solver time by the
+candidate count — the quality gain is measured, and the candidate count is the
+knob that trades latency for diversity.
 
 ---
 

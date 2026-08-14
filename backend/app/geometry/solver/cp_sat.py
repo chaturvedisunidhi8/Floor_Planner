@@ -35,7 +35,12 @@ from ortools.sat.python import cp_model
 
 from app.geometry.envelope import Envelope
 from app.geometry.models import Plan, Room
-from app.geometry.solver.topology import MIN_OPENING, AccessRequirement, RoomSpec
+from app.geometry.solver.topology import (
+    MIN_OPENING,
+    AccessRequirement,
+    RoomSpec,
+    SpatialBias,
+)
 from app.geometry.units import area_to_cells, to_cells, to_ft
 from app.geometry.validation import validate_plan
 
@@ -277,12 +282,56 @@ def _direction_vars(
     return right, left, above, below
 
 
+def _add_spatial_bias(
+    model: cp_model.CpModel,
+    bias: SpatialBias,
+    starts_x: list[cp_model.IntVar],
+    starts_y: list[cp_model.IntVar],
+    widths: list[cp_model.IntVar],
+    heights: list[cp_model.IntVar],
+    W: int,
+    H: int,
+    terms: list[object],
+) -> None:
+    """Soft spatial pressure: reward a room whose centre sits in the named half.
+
+    ``centre in the left half`` is ``2x + w <= W`` (a linear expression, so it
+    can be enforced conditionally on a fresh boolean). Each boolean is worth
+    ``-bias.weight`` in the objective, so the solver *prefers* the arrangement
+    but is never forced into it - which is why a biased candidate can never turn
+    a feasible brief infeasible. This is the topology-search lever that makes a
+    zoning variant genuinely different from the base packing.
+    """
+    for index in bias.left:
+        var = model.NewBoolVar(f"sb_l_{index}")
+        model.Add(2 * starts_x[index] + widths[index] <= W).OnlyEnforceIf(var)
+        terms.append(-bias.weight * var)
+    for index in bias.right:
+        var = model.NewBoolVar(f"sb_r_{index}")
+        model.Add(2 * starts_x[index] + widths[index] >= W).OnlyEnforceIf(var)
+        terms.append(-bias.weight * var)
+    for index in bias.bottom:
+        var = model.NewBoolVar(f"sb_b_{index}")
+        model.Add(2 * starts_y[index] + heights[index] <= H).OnlyEnforceIf(var)
+        terms.append(-bias.weight * var)
+    for index in bias.top:
+        var = model.NewBoolVar(f"sb_t_{index}")
+        model.Add(2 * starts_y[index] + heights[index] >= H).OnlyEnforceIf(var)
+        terms.append(-bias.weight * var)
+
+
 def _add_objective(
     model: cp_model.CpModel,
     specs: list[RoomSpec],
+    starts_x: list[cp_model.IntVar],
+    starts_y: list[cp_model.IntVar],
+    widths: list[cp_model.IntVar],
+    heights: list[cp_model.IntVar],
     areas: list[cp_model.IntVar],
     W: int,
     H: int,
+    *,
+    spatial_bias: SpatialBias | None = None,
 ) -> None:
     terms: list[object] = []
     for index, spec in enumerate(specs):
@@ -292,6 +341,19 @@ def _add_objective(
         # Rooms the brief sized weigh double: hitting their number matters more
         # than a generic room landing exactly on its default.
         terms.append((2 if spec.sized else 1) * deviation)
+
+    if spatial_bias is not None:
+        _add_spatial_bias(
+            model,
+            spatial_bias,
+            starts_x,
+            starts_y,
+            widths,
+            heights,
+            W,
+            H,
+            terms,
+        )
     model.Minimize(sum(terms))
 
 
@@ -326,6 +388,7 @@ def solve(
     strict_area: bool = True,
     validate: bool = True,
     access_requirements: Sequence[AccessRequirement] = (),
+    spatial_bias: SpatialBias | None = None,
 ) -> SolverOutcome:
     """Pack ``specs`` into ``envelope``, returning a :class:`SolverOutcome`.
 
@@ -342,6 +405,11 @@ def solve(
     never proof of a valid plan - the gate is the authority. It stays on for
     production solves and off for the ladder's relaxed probes, whose whole
     point is geometry that cannot meet the brief.
+
+    ``spatial_bias`` is the topology-search lever: soft objective-only pressure
+    (never a hard constraint) that steers the packing towards a different region
+    of the feasible space, so the engine can try several materially different
+    arrangements for one brief.
     """
     budget = time_limit or DEFAULT_TIME_LIMIT
     started = time.perf_counter()
@@ -370,7 +438,18 @@ def solve(
             access_requirements,
             MIN_OPENING,
         )
-    _add_objective(model, specs, areas, W, H)
+    _add_objective(
+        model,
+        specs,
+        starts_x,
+        starts_y,
+        widths,
+        heights,
+        areas,
+        W,
+        H,
+        spatial_bias=spatial_bias,
+    )
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = budget

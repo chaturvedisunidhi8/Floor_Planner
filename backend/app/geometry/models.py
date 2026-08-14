@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.geometry.primitives import WALL_TOLERANCE, Rect
+from app.geometry.walls import WallModel
 from app.schemas.enums import RoomType
 
 
@@ -145,6 +146,8 @@ class Plan:
     #: Populated by Milestone B's connectivity/doors/windows passes.
     doors: list[Door] = field(default_factory=list)
     windows: list[Window] = field(default_factory=list)
+    #: Populated by Milestone E/F's wall pass, when it has run.
+    walls: WallModel | None = None
     #: ``"feasible"`` / ``"infeasible"`` / ``"timeout"``.
     status: str = "feasible"
     #: 0..100 when feasible; ``None`` otherwise.
@@ -159,6 +162,30 @@ class Plan:
     @property
     def room_count(self) -> int:
         return len(self.rooms)
+
+    # --- Milestone E/F area ledger -----------------------------------------
+    # ``Rect.area`` (the gross rectangle) is untouched; these live alongside
+    # it so callers can choose gross or clear semantics explicitly.
+    @property
+    def gross_area(self) -> float:
+        """Total room gross area - the sum of the solved rectangles."""
+        if self.walls is not None:
+            return self.walls.gross_area
+        return sum(r.area for r in self.rooms)
+
+    @property
+    def clear_area(self) -> float:
+        """Usable interior after the walls are carved out."""
+        if self.walls is not None:
+            return self.walls.clear_area
+        return sum(r.area for r in self.rooms)
+
+    @property
+    def wall_area(self) -> float:
+        """Floor area actually occupied by walls."""
+        if self.walls is not None:
+            return self.walls.wall_area
+        return 0.0
 
     def to_rects(self) -> list[Rect]:
         return [room.to_rect() for room in self.rooms]

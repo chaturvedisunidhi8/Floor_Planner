@@ -9,19 +9,22 @@ the drawing reads as a real opening rather than a break at the jamb.
 from __future__ import annotations
 
 from app.geometry.models import Plan, Window
+from app.geometry.walls import WALLS
 from app.schemas.enums import RoomType
 
 #: Feet of external wall below which a window is not worth cutting.
-MIN_RUN = 6.0
+#: Owned by :data:`app.geometry.walls.WALLS`.
+MIN_RUN = WALLS.window_min_run
 
-#: Widest window, in feet, whatever the run.
-MAX_WIDTH = 5.0
+#: Widest window, in feet, whatever the run. Owned by :data:`app.geometry.walls.WALLS`.
+MAX_WIDTH = WALLS.window_width
 
 #: Rooms whose openings are drawn as hatches/swings rather than windows.
 _NO_WINDOWS: frozenset[RoomType] = frozenset({RoomType.PARKING, RoomType.GARDEN})
 
 #: Tolerance for "this wall is the plot boundary", in feet.
-EDGE_TOL = 0.1
+#: Owned by :data:`app.geometry.walls.WALLS`.
+EDGE_TOL = WALLS.edge_tolerance
 
 
 def model_windows(plan: Plan, *, min_run: float = MIN_RUN) -> list[Window]:

@@ -19,12 +19,15 @@ from collections.abc import Sequence
 
 from app.geometry.models import Door, Plan
 from app.geometry.solver.topology import AccessRequirement
+from app.geometry.walls import WALLS
 
 #: Feet of shared wall below which a doorway is not worth cutting.
-MIN_OPENING = 2.5
+#: Owned by :data:`app.geometry.walls.WALLS`.
+MIN_OPENING = WALLS.min_opening
 
 #: Standard door leaf, in feet. Clamped down when the shared run is shorter.
-DOOR_WIDTH = 3.0
+#: Owned by :data:`app.geometry.walls.WALLS`.
+DOOR_WIDTH = WALLS.door_width
 
 
 def model_doors(

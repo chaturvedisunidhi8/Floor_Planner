@@ -17,9 +17,15 @@ The template supplies the room *set* (which rooms belong together); the brief
 supplies the *numbers* (sizes, bathroom counts, features). Bedrooms are
 retyped to match the BHK the same way the legacy engine does.
 
-Milestone C deliberately does **not** expand the topology search: the 20
-templates stay the only candidate arrangements. The access model is what turns
-each one from a rectangle packing into an actually accessible plan.
+The topology-search milestone adds a *search* over the arrangement space on top
+of that foundation: :func:`candidate_programmes` now returns several candidate
+programmes per (brief, template) pair - the original single programme plus
+room-order permutations and soft spatial-zoning variants. Every candidate keeps
+the exact same room set and the same access model, so the door graph - and with
+it the connectivity guarantee - is identical across the search; only the packing
+the solver is asked to find changes. The engine solves each candidate, scores
+the survivors with the architectural scorer and returns the best, so "more
+plans" never trades away the hard guarantees A-F proved.
 """
 
 from __future__ import annotations
@@ -30,6 +36,7 @@ from dataclasses import dataclass, field
 from app.geometry.connectivity import CIRCULATION_TYPES
 from app.geometry.primitives import Rect
 from app.geometry.units import max_area, min_area, min_side, natural_area
+from app.geometry.walls import WALLS
 from app.schemas.enums import RoomType
 from app.schemas.requirements import FloorPlanRequirements
 from app.schemas.template import FloorPlanTemplate
@@ -80,7 +87,8 @@ PRIVACY_AWAY_FROM: frozenset[RoomType] = frozenset(
 #: Feet of shared wall below which a doorway is not worth cutting. Every access
 #: requirement enforces this overlap in the solver, so a valid plan always has
 #: a real place to cut the door that connects the two rooms.
-MIN_OPENING = 2.5
+#: Owned by :data:`app.geometry.walls.WALLS`.
+MIN_OPENING = WALLS.min_opening
 
 
 @dataclass(frozen=True)
@@ -121,6 +129,49 @@ class AccessRequirement:
 
 
 @dataclass(frozen=True)
+class SpatialBias:
+    """Soft, objective-only pressure on where rooms sit.
+
+    Each tuple names indices (into :attr:`Programme.specs`) the solver is
+    *rewarded* for placing with their centre in the named half of the plot. The
+    reward is a negative objective term, so a biased candidate prefers that
+    arrangement but is never required to take it: it can still place a bedroom
+    anywhere, which is exactly why a spatial bias cannot make a feasible brief
+    infeasible. Its job is to steer the search away from the single packing the
+    base candidate would find, so the engine actually sees more of the feasible
+    space instead of several near-copies of one plan.
+    """
+
+    #: Indices pushed to the left / right / bottom / top half of the plot.
+    left: tuple[int, ...] = ()
+    right: tuple[int, ...] = ()
+    bottom: tuple[int, ...] = ()
+    top: tuple[int, ...] = ()
+    #: Objective credit per biased room. The CP-SAT objective is integer, so
+    #: this must be a whole number; ``20`` is small next to the area-deviation
+    #: terms but large enough to steer a typical 1-4 BHK pack.
+    weight: int = 20
+
+
+@dataclass(frozen=True)
+class TopologySearchConfig:
+    """How many candidate topologies to generate, and what kinds.
+
+    ``max_candidates`` caps the total returned by :func:`candidate_programmes`
+    (the base programme is always candidate 0). ``enable_zoning`` turns on the
+    soft spatial-bias variants - the main diversity driver - and
+    ``enable_permutations`` the room-order variants. ``bias_weight`` feeds every
+    :class:`SpatialBias` generated. Setting ``max_candidates=1`` reproduces the
+    pre-search behaviour exactly.
+    """
+
+    max_candidates: int = 5
+    enable_zoning: bool = True
+    enable_permutations: bool = True
+    bias_weight: int = 20
+
+
+@dataclass(frozen=True)
 class Programme:
     """One candidate topology to solve."""
 
@@ -134,6 +185,15 @@ class Programme:
     #: Index of the room the front door leads into - the root of the access
     #: graph and where walkability is measured from.
     entrance_index: int = 0
+    #: Soft spatial bias (topology search). ``None`` for the base programme and
+    #: the permutation variants, which rely on order alone for diversity.
+    spatial_bias: SpatialBias | None = None
+    #: Human-readable name of this candidate, for logs and reports.
+    label: str = "Base"
+    #: ``order[k]`` = index into the base programme's ``specs`` of the spec at
+    #: position ``k`` in this candidate's ``specs``. ``None`` when the candidate
+    #: shares the base order, so the engine leaves its rooms untouched.
+    order: tuple[int, ...] | None = None
 
 
 def _spec_for(room_type: RoomType, targets: dict[RoomType, object]) -> RoomSpec:
@@ -250,7 +310,19 @@ def _build_access_model(
         if circ_set:
             requirements.append(AccessRequirement(index, tuple(sorted(circ_set))))
 
-    bedrooms = [i for i in indoor if specs[i].type.is_bedroom]
+    # Bedrooms ranked by desirability, not spec position, so the en-suite
+    # assignment below is invariant to the room order a permutation candidate
+    # solves in - the principal bedroom always owns the first attached bathroom,
+    # whichever order the specs happen to come in.
+    def _bedroom_rank(spec) -> int:
+        try:
+            return BEDROOM_PRIORITY.index(spec.type)
+        except ValueError:
+            return len(BEDROOM_PRIORITY)
+
+    bedrooms = sorted(
+        (i for i in indoor if specs[i].type.is_bedroom), key=lambda i: _bedroom_rank(specs[i])
+    )
 
     # 2. The kitchen hangs off the dining room when there is one, else the spine.
     dining = [i for i, spec in enumerate(specs) if spec.type is RoomType.DINING_ROOM]
@@ -265,8 +337,9 @@ def _build_access_model(
         attach_to_any_circulation(index)
 
     # 4. An attached bathroom opens off its own bedroom (the en-suite rule) or
-    #    the spine. Assigning by rank keeps the mapping deterministic, so the
-    #    first attached bathroom belongs to the principal bedroom.
+    #    the spine. Assigning by rank keeps the mapping deterministic and
+    #    order-invariant, so the first attached bathroom belongs to the
+    #    principal bedroom whatever the spec order.
     attached = [i for i in indoor if specs[i].type is RoomType.ATTACHED_BATHROOM]
     for rank, index in enumerate(attached):
         owner = bedrooms[rank % len(bedrooms)] if bedrooms else None
@@ -346,17 +419,123 @@ def programme_from_brief(
     )
 
 
+def _zoning_variants(
+    base: Programme, weight: int
+) -> list[tuple[SpatialBias, str]]:
+    """Bedrooms vs social-core splits - the semantic zones of a home.
+
+    Each variant pushes the bedrooms into one half of the plot and the social
+    core (living, dining, kitchen) into the opposite half. Trying all four
+    directions gives the search two independent axes of real difference - a
+    front/back split and a left/right split - and the two mirrors of each. A
+    brief with no bedrooms (or no social core) has nothing to zone, so it
+    yields no variants and the permutations carry the diversity instead.
+    """
+    bedrooms = tuple(i for i, spec in enumerate(base.specs) if spec.type.is_bedroom)
+    social = tuple(
+        i
+        for i, spec in enumerate(base.specs)
+        if spec.type in {RoomType.LIVING_ROOM, RoomType.DINING_ROOM, RoomType.KITCHEN}
+    )
+    if not bedrooms or not social:
+        return []
+
+    return [
+        (SpatialBias(left=bedrooms, right=social, weight=weight), "Bedrooms left / social right"),
+        (SpatialBias(right=bedrooms, left=social, weight=weight), "Bedrooms right / social left"),
+        (SpatialBias(bottom=bedrooms, top=social, weight=weight), "Bedrooms back / social front"),
+        (SpatialBias(top=bedrooms, bottom=social, weight=weight), "Bedrooms front / social back"),
+    ]
+
+
+def _permutation_orders(specs: list[RoomSpec]) -> list[tuple[tuple[int, ...], str]]:
+    """Deterministic room orders that re-shuffle the packing without changing it.
+
+    The CP-SAT optimum is order-independent, but a time-limited single-worker
+    solve finds whichever good packing its search happens on first, and the
+    order variables are created in dictates which region that is. Area-sorted
+    orders steer the search towards growing the big rooms first; the reversed
+    order reads as a mirror of the base packing.
+    """
+    if len(specs) < 3:
+        return []
+    by_area = sorted(
+        range(len(specs)), key=lambda i: specs[i].target_area, reverse=True
+    )
+    return [
+        (tuple(by_area), "Largest rooms first"),
+        (tuple(reversed(by_area)), "Smallest rooms first"),
+        (tuple(reversed(range(len(specs)))), "Mirrored room order"),
+    ]
+
+
+def _permuted_programme(base: Programme, order: tuple[int, ...], label: str) -> Programme:
+    """A candidate that shares the base room set but solves them in another order.
+
+    The access model is rebuilt over the permuted specs - the *edge set* is the
+    same one the base programme carries (same rooms, same attachment rules),
+    only its indices follow the new order - so the door graph the solver is
+    forced to satisfy is exactly the base's, reindexed.
+    """
+    permuted = [base.specs[index] for index in order]
+    access, preferred, forbidden, entrance = _build_access_model(permuted)
+    return Programme(
+        specs=permuted,
+        access_requirements=access,
+        adjacency_pairs=preferred,
+        forbidden_pairs=forbidden,
+        entrance_index=entrance,
+        label=label,
+        order=order,
+    )
+
+
 def candidate_programmes(
     requirements: FloorPlanRequirements,
     template: FloorPlanTemplate,
     *,
-    count: int = 1,
+    config: TopologySearchConfig | None = None,
+    count: int | None = None,
 ) -> list[Programme]:
-    """The candidate topologies to solve.
+    """The candidate topologies to solve, in order of preference.
 
-    Milestone A returns the single programme derived from the brief; Milestone C
-    does the same but enriches it with the access model. Topology search beyond
-    the existing 20 templates is deliberately deferred - first prove that the
-    current templates produce geometrically valid *and* accessible plans.
+    Candidate 0 is always the single programme the engine produced before the
+    topology-search milestone - a caller that only wants that behaviour reads
+    ``[0]`` and gets it unchanged. With a :class:`TopologySearchConfig` (or a
+    ``count`` above 1) the rest of the list holds variants over the *same room
+    set*: soft spatial-zoning variants that steer the solver into genuinely
+    different arrangements, and room-order permutations that shuffle the
+    packing it finds. Every variant keeps the base access model, so the
+    connectivity guarantee is identical across the whole search - only the
+    packing asked for changes.
     """
-    return [programme_from_brief(requirements, template)]
+    base = programme_from_brief(requirements, template)
+    if config is None and count is None:
+        return [base]
+
+    limit = count if count is not None else config.max_candidates if config else 1
+    limit = max(1, limit)
+    if limit == 1:
+        return [base]
+
+    if config is None:
+        config = TopologySearchConfig()
+    variants: list[Programme] = []
+    if config.enable_zoning:
+        for bias, label in _zoning_variants(base, config.bias_weight):
+            variants.append(
+                Programme(
+                    specs=base.specs,
+                    access_requirements=base.access_requirements,
+                    adjacency_pairs=base.adjacency_pairs,
+                    forbidden_pairs=base.forbidden_pairs,
+                    entrance_index=base.entrance_index,
+                    spatial_bias=bias,
+                    label=label,
+                )
+            )
+    if config.enable_permutations:
+        for order, label in _permutation_orders(base.specs):
+            variants.append(_permuted_programme(base, order, label))
+
+    return [base, *variants[: limit - 1]]

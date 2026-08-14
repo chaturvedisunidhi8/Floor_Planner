@@ -28,10 +28,11 @@ import random
 from collections import Counter
 from dataclasses import dataclass, field, replace
 
+from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.geometry.doors import model_doors
 from app.geometry.envelope import Envelope
-from app.geometry.models import Door, Plan, Window
+from app.geometry.models import Door, Plan, Room, Window
 from app.geometry.primitives import (
     GRID,
     Rect,
@@ -45,7 +46,10 @@ from app.geometry.scoring import score_plan
 from app.geometry.slicing import add_circulation, assign_demands, build_tree, instantiate
 from app.geometry.solver import cp_sat
 from app.geometry.solver import infeasibility as solver_infeasibility
-from app.geometry.solver.topology import candidate_programmes
+from app.geometry.solver.topology import (
+    TopologySearchConfig,
+    candidate_programmes,
+)
 from app.geometry.validation import validate_plan
 from app.geometry.validator import (
     LayoutRepairer,
@@ -64,6 +68,7 @@ from app.geometry.vastu import ZONE_TARGETS as VASTU_ZONE_TARGETS
 from app.geometry.vastu import VastuReport
 from app.geometry.vastu import comply as comply_with_vastu
 from app.geometry.vastu import zone_score as vastu_zone_score
+from app.geometry.walls import WallModel, build_wall_model
 from app.geometry.windows import model_windows
 from app.schemas.enums import RoomType
 from app.schemas.requirements import FloorPlanRequirements
@@ -143,8 +148,21 @@ class LayoutPlan:
     doors: list[Door] = field(default_factory=list)
     #: Modeled windows on external walls (Milestone B).
     windows: list[Window] = field(default_factory=list)
+    #: Modeled walls with real thicknesses (Milestone E/F). ``None`` for the
+    #: legacy engine, whose renderer infers wall lines from room edges.
+    walls: WallModel | None = None
     #: ``None`` when the brief asked for no Vastu compliance.
     vastu: VastuReport | None = None
+    #: Per-candidate audit trail from the topology search, in solve order. Each
+    #: entry is ``{"label", "status", "score", "validation_errors"}``: ``status``
+    #: is ``feasible`` for a candidate that survived the gate, ``pruned`` for one
+    #: the solver solved but the strict gate rejected, or a solver verdict
+    #: (``infeasible``/``timeout``) for a refusal. ``score`` is the
+    #: architectural score for survivors; ``validation_errors`` explains a
+    #: pruning. A single-candidate run still carries the base entry, so the
+    #: before/after comparison reads the same shape. ``None`` only for the
+    #: legacy engine, which has no search.
+    topology_search: list[dict] | None = None
 
     @property
     def built_up_sqft(self) -> float:
@@ -153,6 +171,28 @@ class LayoutPlan:
     @property
     def room_count(self) -> int:
         return len(self.rooms)
+
+    # --- Milestone E/F area ledger -----------------------------------------
+    @property
+    def gross_area(self) -> float:
+        """Total room gross area - the sum of the placed rectangles."""
+        if self.walls is not None:
+            return self.walls.gross_area
+        return sum(r.area for r in self.rooms)
+
+    @property
+    def clear_area(self) -> float:
+        """Usable interior after the walls are carved out."""
+        if self.walls is not None:
+            return self.walls.clear_area
+        return sum(r.area for r in self.rooms)
+
+    @property
+    def wall_area(self) -> float:
+        """Floor area actually occupied by walls."""
+        if self.walls is not None:
+            return self.walls.wall_area
+        return 0.0
 
 
 class LayoutEngine:
@@ -250,6 +290,7 @@ class LayoutEngine:
         variation_index: int,
         *,
         time_limit: float | None = None,
+        topology_candidates: int | None = None,
     ) -> LayoutPlan:
         """CP-SAT path: refuse infeasible briefs instead of shrinking them.
 
@@ -257,18 +298,31 @@ class LayoutEngine:
         renderer and service need no changes: ``status`` is ``"feasible"`` on
         success, and ``"infeasible"`` carries ``plan.infeasibility`` with the
         reason and what would make the brief work.
+
+        **Topology search** (the search milestone): unless
+        ``topology_candidates=1``, the engine generates several candidate
+        topologies for the (brief, template) pair, gives each the full solver
+        budget, scores the feasible survivors with the architectural scorer and
+        returns the best plan. Candidate 0 is the single programme the engine
+        solved before the search, so ``topology_candidates=1`` reproduces that
+        behaviour exactly. The returned plan is always re-ordered back to the
+        base programme's room order, so every downstream mapping of specs to
+        rooms is unchanged. If no candidate is feasible the base programme owns
+        the refusal - the brief is what it was, whichever candidate failed.
         """
         envelope = Envelope(self._w, self._l)
-        programme = candidate_programmes(self._req, template)[0]
-        specs = programme.specs
+        config = self._topology_config(topology_candidates)
+        candidates = candidate_programmes(self._req, template, config=config)
+        base = candidates[0]
+        base_specs = base.specs
 
-        preflight = solver_infeasibility.diagnose_brief(specs, envelope)
+        preflight = solver_infeasibility.diagnose_brief(base_specs, envelope)
         if preflight is not None:
             self._log_candidate(
                 template.id,
                 seed,
                 "infeasible",
-                specs=specs,
+                specs=base_specs,
                 infeasibility=preflight.as_dict(),
             )
             return self._solver_infeasible_plan(
@@ -276,25 +330,140 @@ class LayoutEngine:
             )
 
         budget = time_limit or cp_sat.DEFAULT_TIME_LIMIT
-        outcome = cp_sat.solve(
-            specs,
-            envelope,
-            seed=seed,
-            time_limit=budget,
-            access_requirements=programme.access_requirements,
-        )
-        # Feasible candidates are logged with their full geometry once the
-        # validation gate and scoring have run; only a refusal is logged here.
-        if outcome.status != cp_sat.FEASIBLE:
-            self._log_candidate(
-                template.id,
+        base_outcome: cp_sat.SolverOutcome | None = None
+        base_report = None
+        best_candidate: object | None = None
+        best_outcome: cp_sat.SolverOutcome | None = None
+        best_plan: Plan | None = None
+        best_report = None
+        best_score = -1.0
+        search_log: list[dict] = []
+
+        for candidate in candidates:
+            outcome = cp_sat.solve(
+                candidate.specs,
+                envelope,
+                seed=seed,
+                time_limit=budget,
+                access_requirements=candidate.access_requirements,
+                spatial_bias=candidate.spatial_bias,
+            )
+            entry: dict = {"label": candidate.label, "status": outcome.status}
+            if outcome.status != cp_sat.FEASIBLE:
+                # A refusal is logged here; a feasible candidate is logged once
+                # it has passed the gate and been scored.
+                self._log_candidate(
+                    template.id,
+                    seed,
+                    outcome.status,
+                    specs=candidate.specs,
+                    outcome=outcome,
+                    candidate_label=candidate.label,
+                )
+                if candidate is base:
+                    base_outcome = outcome
+                search_log.append(entry)
+                continue
+
+            # Every feasible candidate runs the same finish the single-programme
+            # engine gave its plan: rooms back into the base order, doors,
+            # windows and walls modelled, the strict gate applied. Candidates
+            # the gate rejects are *pruned* - the solver can find arrangements
+            # that do not survive the strict wall/door model, and one pruned
+            # candidate must never sink a search where another candidate passed.
+            rooms = self._remap_to_base_order(outcome.rooms, candidate.order, len(base_specs))
+            plan = Plan(rooms=rooms, plot_width=self._w, plot_length=self._l, status="feasible")
+            plan.doors = model_doors(plan, base.access_requirements)
+            plan.windows = model_windows(plan)
+            plan.walls = build_wall_model(
+                plan.rooms, plot_width=self._w, plot_length=self._l, envelope=envelope
+            )
+            report = validate_plan(plan, envelope, base_specs)
+            if not report.ok:
+                entry["status"] = "pruned"
+                entry["validation_errors"] = list(report.errors)
+                self._log_candidate(
+                    template.id,
+                    seed,
+                    "pruned",
+                    specs=base_specs,
+                    outcome=outcome,
+                    validation_errors=list(report.errors),
+                    candidate_label=candidate.label,
+                )
+                if candidate is base:
+                    base_outcome = outcome
+                    base_report = report
+                search_log.append(entry)
+                continue
+            plan.quality_score = score_plan(plan, self._req).total
+            entry["score"] = plan.quality_score
+            if plan.quality_score > best_score:
+                best_score = plan.quality_score
+                best_candidate, best_outcome, best_plan, best_report = (
+                    candidate,
+                    outcome,
+                    plan,
+                    report,
+                )
+            search_log.append(entry)
+
+        if best_plan is None:
+            return self._solver_refusal(
+                base,
+                base_outcome,
+                base_report,
+                search_log,
+                envelope,
+                budget,
                 seed,
-                outcome.status,
-                specs=specs,
-                outcome=outcome,
+                template,
+                variation_index,
             )
 
-        if outcome.status == cp_sat.INFEASIBLE and outcome.validation_failed:
+        self._log_candidate(
+            template.id,
+            seed,
+            "feasible",
+            specs=base_specs,
+            outcome=best_outcome,
+            plan=best_plan,
+            validation_errors=[],
+            candidate_label=best_candidate.label,
+        )
+        return self._solver_feasible_plan(
+            best_plan, template, seed, variation_index, best_report, search_log
+        )
+
+    def _solver_refusal(
+        self,
+        base,
+        base_outcome,
+        base_report,
+        search_log: list[dict],
+        envelope: Envelope,
+        budget: float,
+        seed: int,
+        template: FloorPlanTemplate,
+        variation_index: int,
+    ) -> LayoutPlan:
+        """The refusal path when *no* candidate survived the search.
+
+        The base programme owns the diagnosis: the brief is what it was
+        whichever candidate failed first, so an infeasible brief reports the
+        same reason the single-programme engine always gave. A base that the
+        solver solved but the strict gate rejected is reported as the solver
+        bug it has always been - never as a client-side infeasibility.
+        """
+        base_specs = base.specs
+        if base_outcome is None:
+            # Unreachable in practice (the base is always solved first), but a
+            # guarded fallback beats a hard crash if a future caller skips it.
+            reason = "the solver produced no plan without explaining why"
+            return self._solver_failed_plan(
+                template, seed, variation_index, reason, search_log
+            )
+        if base_outcome.status == cp_sat.INFEASIBLE and base_outcome.validation_failed:
             # The model said feasible but the strict gate rejected the geometry
             # - a solver/extraction bug, not a brief problem. Report it as such;
             # the relaxation ladder has nothing to diagnose.
@@ -302,65 +471,82 @@ class LayoutEngine:
                 template.id,
                 seed,
                 "infeasible",
-                specs=specs,
-                outcome=outcome,
-                validation_errors=[outcome.reason],
+                specs=base_specs,
+                outcome=base_outcome,
+                validation_errors=[base_outcome.reason],
             )
-            return self._solver_failed_plan(template, seed, variation_index, outcome.reason)
-        if outcome.status == cp_sat.INFEASIBLE:
+            return self._solver_failed_plan(
+                template, seed, variation_index, base_outcome.reason, search_log
+            )
+        if base_outcome.status == cp_sat.INFEASIBLE:
             diagnosis = solver_infeasibility.diagnose_solver(
-                specs, envelope, seed=seed, time_limit=budget
+                base_specs, envelope, seed=seed, time_limit=budget
             )
             return self._solver_infeasible_plan(
-                template, seed, variation_index, diagnosis.as_dict(), diagnosis.reason
+                template,
+                seed,
+                variation_index,
+                diagnosis.as_dict(),
+                diagnosis.reason,
+                search_log,
             )
-        if outcome.status == cp_sat.TIMEOUT:
-            diagnosis = solver_infeasibility.InfeasibilityDiagnostics(
-                "timeout",
-                "the solver could not find a layout within the time budget",
-                f"After {budget:g}s the solver had not produced a plan. The brief "
-                "may be infeasible or merely hard to pack.",
-                ("Increase the solver time budget", "Simplify the brief"),
-            )
-            return self._solver_infeasible_plan(
-                template, seed, variation_index, diagnosis.as_dict(), diagnosis.reason
-            )
-
-        plan = Plan(
-            rooms=outcome.rooms,
-            plot_width=self._w,
-            plot_length=self._l,
-            status="feasible",
-        )
-        # Milestone B/D: read the finished geometry and model its openings, so
-        # the validation gate can prove the doors and windows are real. Doors go
-        # on the intended access edges only - never on a wall two rooms merely
-        # happen to share.
-        plan.doors = model_doors(plan, programme.access_requirements)
-        plan.windows = model_windows(plan)
-        report = validate_plan(plan, envelope, specs)
-        if not report.ok:
+        if base_report is not None and not base_report.ok:
+            # The solver solved the base but the strict gate rejected its
+            # geometry - the same solver/extraction bug the single-programme
+            # engine surfaced, now attributable to the base candidate alone.
             self._log_candidate(
                 template.id,
                 seed,
                 "infeasible",
-                specs=specs,
-                outcome=outcome,
-                validation_errors=list(report.errors),
+                specs=base_specs,
+                outcome=base_outcome,
+                validation_errors=list(base_report.errors),
             )
-            return self._solver_failed_plan(template, seed, variation_index, report)
-
-        plan.quality_score = score_plan(plan, self._req).total
-        self._log_candidate(
-            template.id,
-            seed,
-            "feasible",
-            specs=specs,
-            outcome=outcome,
-            plan=plan,
-            validation_errors=[],
+            return self._solver_failed_plan(
+                template, seed, variation_index, base_report, search_log
+            )
+        diagnosis = solver_infeasibility.InfeasibilityDiagnostics(
+            "timeout",
+            "the solver could not find a layout within the time budget",
+            f"After {budget:g}s the solver had not produced a plan. The brief "
+            "may be infeasible or merely hard to pack.",
+            ("Increase the solver time budget", "Simplify the brief"),
         )
-        return self._solver_feasible_plan(plan, template, seed, variation_index, report)
+        return self._solver_infeasible_plan(
+            template, seed, variation_index, diagnosis.as_dict(), diagnosis.reason, search_log
+        )
+
+    def _topology_config(self, candidates_override: int | None = None) -> TopologySearchConfig:
+        """The topology-search configuration, from settings or an override."""
+        settings = get_settings()
+        return TopologySearchConfig(
+            max_candidates=(
+                candidates_override
+                if candidates_override is not None
+                else settings.topology_candidates
+            ),
+            enable_zoning=settings.topology_zoning,
+            enable_permutations=settings.topology_permutations,
+            bias_weight=settings.topology_bias_weight,
+        )
+
+    @staticmethod
+    def _remap_to_base_order(
+        rooms: list[Room], order: tuple[int, ...] | None, size: int
+    ) -> list[Room]:
+        """Re-order solved rooms back to the base programme's spec order.
+
+        Candidates may permute the room order to steer the solver; the plan the
+        rest of the app sees must stay in the base programme's order so door
+        modeling, the strict gate and response building keep mapping specs to
+        rooms exactly as they always have.
+        """
+        if order is None:
+            return rooms
+        inverse = [0] * size
+        for candidate_index, base_index in enumerate(order):
+            inverse[base_index] = candidate_index
+        return [rooms[inverse[i]] for i in range(size)]
 
     @staticmethod
     def _log_candidate(
@@ -373,6 +559,7 @@ class LayoutEngine:
         plan: Plan | None = None,
         infeasibility: dict | None = None,
         validation_errors: list[str] | None = None,
+        candidate_label: str | None = None,
     ) -> None:
         """One structured line per solved candidate (the benchmark's audit trail).
 
@@ -381,6 +568,10 @@ class LayoutEngine:
         violations found by the strict gate, the validation verdict, the
         objective and the solve time - exactly the fields a Milestone M report
         needs to say why the solver engine beats (or trails) the legacy one.
+        ``status`` is ``feasible`` for the surviving winner, one of the solver
+        verdicts for refusals, and ``pruned`` for a candidate the solver solved
+        but the strict gate rejected - the search did find it, it just did not
+        survive the wall/door model.
         """
         topo = ",".join(f"{spec.type.value}={spec.target_area:g}" for spec in specs)
         elapsed = outcome.elapsed if outcome is not None else None
@@ -392,10 +583,11 @@ class LayoutEngine:
             )
             logger.info(
                 "solver_candidate template=%s seed=%d status=feasible "
-                "topology=[%s] rooms=%d violations=%d validation=ok "
+                "candidate=%s topology=[%s] rooms=%d violations=%d validation=ok "
                 "objective=%s score=%s elapsed_s=%s dims=[%s]",
                 template_id,
                 seed,
+                candidate_label,
                 topo,
                 len(plan.rooms),
                 len(validation_errors or []),
@@ -408,11 +600,12 @@ class LayoutEngine:
             stage = infeasibility.get("stage") if infeasibility else None
             reason = infeasibility.get("reason") if infeasibility else None
             logger.info(
-                "solver_candidate template=%s seed=%d status=%s topology=[%s] "
-                "stage=%s reason=%s violations=%d elapsed_s=%s",
+                "solver_candidate template=%s seed=%d status=%s candidate=%s "
+                "topology=[%s] stage=%s reason=%s violations=%d elapsed_s=%s",
                 template_id,
                 seed,
                 status,
+                candidate_label,
                 topo,
                 stage,
                 reason,
@@ -427,6 +620,7 @@ class LayoutEngine:
         seed: int,
         variation_index: int,
         report,
+        search_log: list[dict] | None = None,
     ) -> LayoutPlan:
         return LayoutPlan(
             rooms=[room.to_rect() for room in plan.rooms],
@@ -442,6 +636,8 @@ class LayoutEngine:
             quality_score=plan.quality_score,
             doors=plan.doors,
             windows=plan.windows,
+            walls=plan.walls,
+            topology_search=search_log,
         )
 
     def _solver_infeasible_plan(
@@ -451,6 +647,7 @@ class LayoutEngine:
         variation_index: int,
         infeasibility: dict,
         reason: str,
+        search_log: list[dict] | None = None,
     ) -> LayoutPlan:
         return LayoutPlan(
             rooms=[],
@@ -463,10 +660,16 @@ class LayoutEngine:
             warnings=[reason, *infeasibility.get("suggestions", [])],
             status="infeasible",
             infeasibility=infeasibility,
+            topology_search=search_log,
         )
 
     def _solver_failed_plan(
-        self, template: FloorPlanTemplate, seed: int, variation_index: int, report
+        self,
+        template: FloorPlanTemplate,
+        seed: int,
+        variation_index: int,
+        report,
+        search_log: list[dict] | None = None,
     ) -> LayoutPlan:
         errors = report.errors if hasattr(report, "errors") else [report]
         infeasibility = {
@@ -486,6 +689,7 @@ class LayoutEngine:
             warnings=errors,
             status="infeasible",
             infeasibility=infeasibility,
+            topology_search=search_log,
         )
 
     def _orient_for_vastu(self, rooms: list[Rect]) -> tuple[list[Rect], VastuReport | None]:

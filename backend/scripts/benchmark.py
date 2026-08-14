@@ -25,9 +25,18 @@ Metrics per brief (averaged over all templates x variations):
   as such (the legacy engine is 0 by construction - it never says no).
 * **unexpected-infeasible** layouts the engine refused for a brief marked
   feasible in the corpus - the cost of making access a hard constraint.
+* **feasibility**       fraction of attempts whose verdict matched the corpus
+  label: a brief marked infeasible was refused and a brief marked feasible was
+  built. This is the single number that says whether the engine *knows* what
+  can and cannot be built (1.0 means it never misclassifies).
 * **coverage**          mean fraction of the plot the rooms occupy.
 * **corridor**          mean fraction of built-up area held by passage/foyer.
 * **time**              mean wall-clock seconds per generated layout.
+* **score**             mean architectural quality score of feasible solver
+  plans (from the scoring module used for best-plan selection).
+* **unique layouts**    distinct final geometries per brief/template - the
+  diversity payoff of topology search (``--topology-candidates N``).
+  ``N=1`` disables the search and reproduces the single-programme engine.
 
 An infeasible brief is one whose demanded minimum floor area already exceeds
 the buildable area, so there is no layout that could satisfy it.
@@ -233,6 +242,11 @@ class BriefMetrics:
     overlap_count: int = 0
     infeasible_detected: int = 0
     unexpected_infeasible: int = 0
+    #: Infeasible briefs the engine wrongly built instead of refusing.
+    infeasible_missed: int = 0
+    #: Correct verdicts vs total attempts (the ``feasibility`` metric).
+    feasibility_correct: int = 0
+    feasibility_total: int = 0
     coverage: list[float] = field(default_factory=list)
     corridor_fraction: list[float] = field(default_factory=list)
     times: list[float] = field(default_factory=list)
@@ -242,10 +256,21 @@ class BriefMetrics:
     door_satisfied: list[float] = field(default_factory=list)
     #: Plans where a forbidden pair (e.g. bathroom vs living) shares a wall.
     forbidden_violations: int = 0
+    #: Architectural scores of feasible solver plans (quality_score).
+    scores: list[float] = field(default_factory=list)
+    #: Distinct final geometries, as ``(type, x, y, w, h)`` signatures.
+    layout_signatures: set[str] = field(default_factory=set)
 
     @property
     def overlap_rate(self) -> float:
         return self.overlap_count / self.plans if self.plans else 0.0
+
+    @property
+    def feasibility(self) -> float | None:
+        """Fraction of attempts whose verdict matched the corpus label."""
+        if not self.feasibility_total:
+            return None
+        return self.feasibility_correct / self.feasibility_total
 
     def merge(self, other: BriefMetrics) -> None:
         self.plans += other.plans
@@ -256,12 +281,17 @@ class BriefMetrics:
         self.overlap_count += other.overlap_count
         self.infeasible_detected += other.infeasible_detected
         self.unexpected_infeasible += other.unexpected_infeasible
+        self.infeasible_missed += other.infeasible_missed
+        self.feasibility_correct += other.feasibility_correct
+        self.feasibility_total += other.feasibility_total
         self.coverage.extend(other.coverage)
         self.corridor_fraction.extend(other.corridor_fraction)
         self.times.extend(other.times)
         self.access_satisfied.extend(other.access_satisfied)
         self.door_satisfied.extend(other.door_satisfied)
         self.forbidden_violations += other.forbidden_violations
+        self.scores.extend(other.scores)
+        self.layout_signatures.update(other.layout_signatures)
 
 
 def _area_error(plan, requirements) -> float:
@@ -372,6 +402,7 @@ def run_brief(
     templates: list[str] | None = None,
     variants: int = 2,
     solver_budget: float = 1.5,
+    topology_candidates: int = 3,
 ) -> BriefMetrics:
     """Run one brief through the chosen engine and aggregate the metrics."""
     name, requirements, infeasible = brief
@@ -390,6 +421,7 @@ def run_brief(
                         seed=100 + variation,
                         variation_index=variation,
                         time_limit=solver_budget,
+                        topology_candidates=topology_candidates,
                     )
                 else:
                     plan = engine.generate(
@@ -402,12 +434,19 @@ def run_brief(
             metrics.times.append(elapsed)
             metrics.plans += 1
 
-            if plan.status == "infeasible":
-                if infeasible:
+            if infeasible:
+                metrics.feasibility_total += 1
+                if plan.status == "infeasible":
                     metrics.infeasible_detected += 1
+                    metrics.feasibility_correct += 1
                 else:
-                    metrics.unexpected_infeasible += 1
+                    metrics.infeasible_missed += 1
                 continue
+            metrics.feasibility_total += 1
+            if plan.status == "infeasible":
+                metrics.unexpected_infeasible += 1
+                continue
+            metrics.feasibility_correct += 1
 
             metrics.area_errors.append(_area_error(plan, requirements))
             metrics.dim_errors.append(_dim_error(plan, requirements))
@@ -425,6 +464,13 @@ def run_brief(
                 door_satisfied, door_connected = _door_metrics(plan, programme)
                 metrics.door_satisfied.append(door_satisfied)
                 metrics.door_connected_fraction.append(door_connected)
+                if plan.quality_score is not None:
+                    metrics.scores.append(plan.quality_score)
+                signature = "|".join(
+                    f"{r.type}:{r.x:.1f},{r.y:.1f},{r.width:.1f},{r.height:.1f}"
+                    for r in plan.rooms
+                )
+                metrics.layout_signatures.add(signature)
 
     return metrics
 
@@ -444,7 +490,9 @@ def _summary(metrics: BriefMetrics) -> dict:
         ),
         "overlap_rate": metrics.overlap_rate,
         "infeasible_detected": metrics.infeasible_detected,
+        "infeasible_missed": metrics.infeasible_missed,
         "unexpected_infeasible": metrics.unexpected_infeasible,
+        "feasibility": metrics.feasibility,
         "coverage": mean(metrics.coverage) if metrics.coverage else None,
         "corridor": mean(metrics.corridor_fraction) if metrics.corridor_fraction else None,
         "time_ms": mean(metrics.times) * 1000 if metrics.times else None,
@@ -453,6 +501,8 @@ def _summary(metrics: BriefMetrics) -> dict:
         ),
         "door_satisfied": mean(metrics.door_satisfied) if metrics.door_satisfied else None,
         "forbidden_violations": metrics.forbidden_violations,
+        "score_avg": mean(metrics.scores) if metrics.scores else None,
+        "unique_layouts": len(metrics.layout_signatures),
     }
 
 
@@ -464,15 +514,20 @@ def _print_row(label: str, metrics: BriefMetrics, width: int = 82) -> None:
     cov = mean(metrics.coverage) if metrics.coverage else float("nan")
     corr = mean(metrics.corridor_fraction) if metrics.corridor_fraction else float("nan")
     t = mean(metrics.times) if metrics.times else float("nan")
+    score = mean(metrics.scores) if metrics.scores else float("nan")
     access = mean(metrics.access_satisfied) if metrics.access_satisfied else float("nan")
+    feas = metrics.feasibility if metrics.feasibility is not None else float("nan")
     print(f"{label:<{width}.{width}s}")
     print(
         f"    area-err mean {mean_err:6.3f}  p95 {p95:6.3f}   "
         f"dim-err {dim:6.3f}   connectivity {conn:5.2%}   "
+        f"feasibility {feas:5.2%}   "
         f"overlap {metrics.overlap_rate:5.1%}   "
         f"coverage {cov:5.1%}   corridor {corr:5.1%}   "
         f"time {t*1000:6.0f} ms   ({metrics.plans} plans)"
     )
+    if metrics.scores:
+        print(f"    score avg {score:6.1f}   unique layouts {len(metrics.layout_signatures)}")
     if metrics.access_satisfied:
         door_conn = mean(metrics.door_connected_fraction) if metrics.door_connected_fraction else float("nan")  # noqa: E501
         door_ok = mean(metrics.door_satisfied) if metrics.door_satisfied else float("nan")
@@ -490,6 +545,12 @@ def main() -> int:
     parser.add_argument("--engine", default="legacy", choices=["legacy", "solver", "both"])
     parser.add_argument("--variants", type=int, default=2)
     parser.add_argument("--solver-budget", type=float, default=1.5, help="seconds per CP-SAT solve")
+    parser.add_argument(
+        "--topology-candidates",
+        type=int,
+        default=3,
+        help="candidate topologies per brief for the solver engine; 1 disables the search",
+    )
     parser.add_argument("--briefs", type=str, default="")
     parser.add_argument(
         "--report",
@@ -520,6 +581,7 @@ def main() -> int:
                 engine,
                 variants=args.variants,
                 solver_budget=args.solver_budget,
+                topology_candidates=args.topology_candidates,
             )
             _print_row(f"{engine}:", metrics)
             totals[engine].merge(metrics)
@@ -531,6 +593,13 @@ def main() -> int:
         total = totals[engine]
         _print_row(f"{engine}:", total, width=100)
         print(f"    infeasible detected: {total.infeasible_detected}")
+        if total.feasibility_total:
+            print(
+                f"    feasibility: {total.feasibility:.2%} "
+                f"({total.feasibility_correct}/{total.feasibility_total} correct, "
+                f"{total.infeasible_missed} infeasible built, "
+                f"{total.unexpected_infeasible} feasible refused)"
+            )
         if total.unexpected_infeasible:
             print(f"    unexpected infeasible: {total.unexpected_infeasible}")
         report[engine] = {

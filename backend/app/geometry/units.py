@@ -11,6 +11,7 @@ numbers. ``primitives`` re-exports them, so existing imports keep working.
 
 from __future__ import annotations
 
+from app.geometry.walls import WALLS
 from app.schemas.enums import RoomType
 
 #: One grid cell, in feet. Everything snaps to this half-foot.
@@ -25,7 +26,9 @@ CELLS_PER_FOOT = 1.0 / UNIT
 MAX_EXTENT_CELLS = 200
 
 #: Two edges within this distance are treated as the same wall line.
-WALL_TOLERANCE = 1.25
+#: Owned by :data:`app.geometry.walls.WALLS`; re-exported here so the
+#: ``from app.geometry.primitives import WALL_TOLERANCE`` imports keep working.
+WALL_TOLERANCE = WALLS.wall_tolerance
 
 #: A room at or above this length-to-short-side ratio reads as a corridor.
 MAX_ASPECT_RATIO = 3.6

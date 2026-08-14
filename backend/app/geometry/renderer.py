@@ -289,8 +289,11 @@ class FloorPlanRenderer:
             for room in plan.rooms:
                 self._draw_room_features(draw, room, px, ppf, palette)
 
-            for room in plan.rooms:
-                self._draw_walls(draw, room, px, partition, palette)
+            if plan.walls is not None:
+                self._draw_wall_model(draw, plan.walls, px, palette)
+            else:
+                for room in plan.rooms:
+                    self._draw_walls(draw, room, px, partition, palette)
 
             self._draw_openings(draw, plan, px, ppf, palette, wall)
 
@@ -315,6 +318,20 @@ class FloorPlanRenderer:
         x2, y2 = px(room.x2, room.y)
         group = ROOM_GROUP.get(room.type, "service")
         draw.rectangle([x1, y1, x2, y2], fill=palette.room_fills[group])
+
+    @staticmethod
+    def _draw_wall_model(draw: ImageDraw.ImageDraw, model, px, palette: Palette) -> None:
+        """Wall poche straight from the modeled wall geometry.
+
+        External walls are drawn heavy in the wall colour, internal partitions
+        lighter; the polygons are already final (bands unioned and clipped), so
+        this is exact rather than inferred from room adjacency.
+        """
+        for segment in model.segments:
+            ring = segment.polygon.exterior
+            coords = [(px(v[0], v[1])) for v in ring.coords]
+            fill = palette.wall if segment.kind == "external" else palette.partition
+            draw.polygon(coords, fill=fill, outline=fill)
 
     @staticmethod
     def _draw_walls(

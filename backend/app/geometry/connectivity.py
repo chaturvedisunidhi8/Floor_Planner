@@ -16,7 +16,7 @@ from collections.abc import Sequence
 import networkx as nx
 
 from app.geometry.models import Door, Plan, Room
-from app.geometry.primitives import WALL_TOLERANCE
+from app.geometry.walls import WALLS
 from app.schemas.enums import RoomType
 
 #: Rooms you may walk through to reach the rest of the house.
@@ -25,10 +25,12 @@ CIRCULATION_TYPES: frozenset[RoomType] = frozenset(
 )
 
 #: Feet of shared wall below which a doorway is not worth cutting.
-MIN_OPENING = 2.5
+#: Owned by :data:`app.geometry.walls.WALLS`.
+MIN_OPENING = WALLS.min_opening
 
 #: Tolerance for "this opening sits on that wall" checks, in feet.
-WALL_TOL = WALL_TOLERANCE
+#: Owned by :data:`app.geometry.walls.WALLS`.
+WALL_TOL = WALLS.wall_tolerance
 
 
 def adjacency_graph(plan: Plan, *, min_opening: float = MIN_OPENING) -> nx.Graph:

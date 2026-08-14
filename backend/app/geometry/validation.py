@@ -15,6 +15,7 @@ from app.geometry.envelope import Envelope
 from app.geometry.models import Plan, Room, Window
 from app.geometry.solver.topology import RoomSpec
 from app.geometry.units import to_cells
+from app.geometry.walls import validate_walls
 from app.schemas.enums import RoomType
 
 #: Tolerances (feet) - the solver output is grid-exact, so these only absorb
@@ -119,6 +120,12 @@ def validate_plan(plan: Plan, envelope: Envelope, specs: list[RoomSpec]) -> Vali
 
     # Milestone B: the modeled doors and windows, when the plan has them.
     _validate_openings(plan, report)
+
+    # Milestone E/F: the modeled walls, when the plan has them.
+    if plan.walls is not None:
+        for problem in validate_walls(plan.walls):
+            report.ok = False
+            report.errors.append(problem)
 
     return report
 

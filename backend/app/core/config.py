@@ -101,6 +101,21 @@ class Settings(BaseSettings):
     #: Wall-clock budget per CP-SAT solve, in seconds.
     solver_time_limit_seconds: float = Field(default=3.0, ge=0.5, le=30.0)
 
+    # --- Topology search ----------------------------------------------------
+    #: How many candidate topologies the solver engine solves per plan before
+    #: returning the best-scoring one. ``1`` reproduces the pre-search
+    #: behaviour exactly. Each candidate gets its own full time budget, so the
+    #: wall-clock cost of a generation scales with this number.
+    topology_candidates: int = Field(default=5, ge=1, le=12)
+    #: Soft spatial-zoning variants (bedrooms vs social core on opposite sides
+    #: of the plot). The main diversity driver.
+    topology_zoning: bool = True
+    #: Room-order permutation variants. A secondary diversity source.
+    topology_permutations: bool = True
+    #: Objective credit per room in a zoning variant. Small next to the
+    #: area-deviation terms, large enough to steer a typical 1-4 BHK pack.
+    topology_bias_weight: int = Field(default=20, ge=1, le=100)
+
     # --- Derived helpers ---------------------------------------------------
     @field_validator("log_level")
     @classmethod
