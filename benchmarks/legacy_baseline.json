@@ -1,0 +1,136 @@
+{
+  "legacy": {
+    "area_err_mean": 0.07489815148923222,
+    "area_err_p95": 0.3711268419080919,
+    "connectivity": 0.8490956682206682,
+    "corridor": 0.06174082194189657,
+    "coverage": 0.9998289413000064,
+    "dim_err": 0.1377746003996004,
+    "infeasible_detected": 0,
+    "overlap_rate": 0.0,
+    "per_brief": {
+      "1BHK 18x25 infeasible": {
+        "area_err_mean": 0.09454581153799904,
+        "area_err_p95": 0.18036075036075036,
+        "connectivity": 0.8333333333333334,
+        "corridor": 0.026819444444444444,
+        "coverage": 1.0,
+        "dim_err": 0.20211843133718133,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 9.89020697511478
+      },
+      "1BHK narrow 20x30": {
+        "area_err_mean": 0.028274739583333333,
+        "area_err_p95": 0.120703125,
+        "connectivity": 0.88,
+        "corridor": 0.08897916666666666,
+        "coverage": 1.0,
+        "dim_err": 0.10809895833333333,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 16.876746924936015
+      },
+      "2BHK deep 25x50": {
+        "area_err_mean": 0.037218088624338626,
+        "area_err_p95": 0.0899024470899471,
+        "connectivity": 0.9001082251082251,
+        "corridor": 0.09880323482373396,
+        "coverage": 0.998995,
+        "dim_err": 0.10279431216931217,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 36.56029039984787
+      },
+      "2BHK irregular 26x38": {
+        "area_err_mean": 0.03523385565052232,
+        "area_err_p95": 0.13791429249762582,
+        "connectivity": 0.9410119047619048,
+        "corridor": 0.09172280130539005,
+        "coverage": 0.9999430668016195,
+        "dim_err": 0.10979700854700855,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 21.452250324955457
+      },
+      "2BHK wide 40x20": {
+        "area_err_mean": 0.04908761160714286,
+        "area_err_p95": 0.1251078869047619,
+        "connectivity": 0.8839484126984127,
+        "corridor": 0.052289602647705845,
+        "coverage": 0.999859375,
+        "dim_err": 0.145734126984127,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 21.90471335006805
+      },
+      "3BHK 20x40 infeasible": {
+        "area_err_mean": 0.38303896819326505,
+        "area_err_p95": 0.4796657140602453,
+        "connectivity": 0.7527714646464646,
+        "corridor": 0.024232536064236365,
+        "coverage": 0.9998828125,
+        "dim_err": 0.24126220567626816,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 27.68212785003925
+      },
+      "3BHK square 35x35": {
+        "area_err_mean": 0.03009623015873016,
+        "area_err_p95": 0.0784077380952381,
+        "connectivity": 0.8455640193140193,
+        "corridor": 0.0700327269065521,
+        "coverage": 0.9998163265306123,
+        "dim_err": 0.12886780753968255,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 30.80414320015734
+      },
+      "3BHK standard 30x45": {
+        "area_err_mean": 0.03350991499819625,
+        "area_err_p95": 0.07174170274170275,
+        "connectivity": 0.8499038461538462,
+        "corridor": 0.05820504399260555,
+        "coverage": 1.0,
+        "dim_err": 0.12729042658730158,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 40.72584097507388
+      },
+      "4BHK 40x55": {
+        "area_err_mean": 0.027127403846153846,
+        "area_err_p95": 0.07578125,
+        "connectivity": 0.8381662087912088,
+        "corridor": 0.05997895900505952,
+        "coverage": 0.9999659090909091,
+        "dim_err": 0.1065234375,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 51.912394799910544
+      },
+      "4BHK deep 30x65": {
+        "area_err_mean": 0.03084889069264069,
+        "area_err_p95": 0.08857954545454545,
+        "connectivity": 0.7661492673992674,
+        "corridor": 0.04634470356257117,
+        "coverage": 0.9998269230769231,
+        "dim_err": 0.10525928932178932,
+        "infeasible_detected": 0,
+        "overlap_rate": 0.0,
+        "plans": 40,
+        "time_ms": 45.76138892493873
+      }
+    },
+    "plans": 400,
+    "time_ms": 30.35701037250419
+  }
+}

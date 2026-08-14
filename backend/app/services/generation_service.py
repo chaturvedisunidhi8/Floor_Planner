@@ -23,12 +23,19 @@ from datetime import UTC, datetime
 from app.ai.imaging.pipeline import ImagePipeline
 from app.ai.llm.requirement_analyzer import RequirementAnalysis, RequirementAnalyzer
 from app.ai.retrieval.matcher import ScoredTemplate, TemplateMatcher
-from app.core.config import Settings
+from app.core.config import GeometryEngine, Settings
 from app.core.exceptions import LayoutGenerationError
 from app.core.logging import get_logger
 from app.geometry.layout_engine import LayoutEngine, LayoutPlan
 from app.schemas.enums import RoomType
-from app.schemas.layout import GeneratedLayout, GenerationResponse, LayoutRoom, TemplateMatch
+from app.schemas.layout import (
+    GeneratedLayout,
+    GenerationResponse,
+    LayoutDoor,
+    LayoutRoom,
+    LayoutWindow,
+    TemplateMatch,
+)
 from app.schemas.requirements import FloorPlanRequirements
 
 logger = get_logger(__name__)
@@ -141,7 +148,15 @@ class GenerationService:
         for index, match in enumerate(sources[:wanted]):
             seed = base_seed + index * 977  # prime stride keeps the RNG streams apart
             try:
-                plan = engine.generate(match.template, seed=seed, variation_index=index)
+                if self._settings.geometry_engine is GeometryEngine.SOLVER:
+                    plan = engine.generate_solver(
+                        match.template,
+                        seed=seed,
+                        variation_index=index,
+                        time_limit=self._settings.solver_time_limit_seconds,
+                    )
+                else:
+                    plan = engine.generate(match.template, seed=seed, variation_index=index)
             except Exception as exc:
                 logger.exception("Layout %d from %s failed", index, match.template.id)
                 warnings.append(f"Skipped one variation ({type(exc).__name__}: {exc})")
@@ -157,6 +172,18 @@ class GenerationService:
             # plan that follows it best rather than with the closest template
             # match. Sorting is stable, so match order still breaks ties.
             layouts.sort(key=lambda layout: layout.vastu_score or 0.0, reverse=True)
+        elif self._settings.geometry_engine is GeometryEngine.SOLVER:
+            # The solver scores every plan, so lead with the best fit. The
+            # sort is stable and descending, pushing infeasible cards to the
+            # tail (their quality_score is ``None`` -> 0.0).
+            layouts.sort(key=lambda layout: layout.quality_score or 0.0, reverse=True)
+
+        if all(layout.status == "infeasible" for layout in layouts):
+            reasons = sorted({l.infeasibility.get("reason", "unknown") for l in layouts})
+            warnings.append(
+                "No layout could satisfy this brief. "
+                + (" ".join(reasons) if reasons else "Try a larger plot or fewer rooms.")
+            )
 
         return layouts
 
@@ -173,6 +200,31 @@ class GenerationService:
         name = VARIANT_NAMES[index % len(VARIANT_NAMES)]
         plot_label = f"{plan.plot_width:g} x {plan.plot_length:g} ft"
         subtitle = f"{requirements.bhk.value}  |  {plot_label}  |  {requirements.style.label}"
+
+        if plan.status == "infeasible":
+            # No geometry to draw: the gallery shows an infeasible card driven
+            # by ``infeasibility`` instead of an image.
+            return GeneratedLayout(
+                id=layout_id,
+                name=f"{name} (infeasible)",
+                bhk=requirements.bhk,
+                style=requirements.style,
+                plot_width_ft=plan.plot_width,
+                plot_length_ft=plan.plot_length,
+                plot_size_label=plot_label,
+                built_up_sqft=0.0,
+                description=self._describe(plan, requirements, match),
+                rooms=[],
+                image_url="",
+                source_template_id=match.template.id,
+                source_template_name=match.template.name,
+                match_score=match.score,
+                render_mode="none",
+                validation_warnings=plan.warnings,
+                seed=plan.seed,
+                status="infeasible",
+                infeasibility=plan.infeasibility,
+            )
 
         destination = self._settings.storage_path / session_id / f"{layout_id}.png"
         rendered = self._images.generate(
@@ -207,6 +259,28 @@ class GenerationService:
                 )
                 for r in plan.rooms
             ],
+            doors=[
+                LayoutDoor(
+                    room_from=d.room_from.value,
+                    room_to=d.room_to.value,
+                    x=round(d.x, 2),
+                    y=round(d.y, 2),
+                    width=round(d.width, 2),
+                    orientation=d.orientation,
+                    swing=d.swing,
+                )
+                for d in plan.doors
+            ],
+            windows=[
+                LayoutWindow(
+                    room=w.room.value,
+                    x=round(w.x, 2),
+                    y=round(w.y, 2),
+                    width=round(w.width, 2),
+                    orientation=w.orientation,
+                )
+                for w in plan.windows
+            ],
             image_url=f"{self._settings.api_prefix}/images/{relative}",
             source_template_id=match.template.id,
             source_template_name=match.template.name,
@@ -214,6 +288,8 @@ class GenerationService:
             render_mode=rendered.mode,
             validation_warnings=plan.warnings,
             seed=plan.seed,
+            status="feasible",
+            quality_score=plan.quality_score,
             vastu_score=plan.vastu.score if plan.vastu else None,
             vastu_notes=plan.vastu.notes if plan.vastu else [],
         )

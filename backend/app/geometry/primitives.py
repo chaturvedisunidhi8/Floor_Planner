@@ -7,109 +7,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from app.geometry.units import (  # noqa: F401  (re-exported for stable imports)
+    CELLS_PER_FOOT,
+    DEFAULT_MIN_SIDE,
+    FEET_PER_CELL,
+    GRID,
+    MAX_AREA,
+    MAX_ASPECT_RATIO,
+    MAX_EXTENT_CELLS,
+    MIN_AREA,
+    MIN_SIDE,
+    UNIT,
+    WALL_TOLERANCE,
+    area_to_cells,
+    cells_area_to_ft,
+    max_area,
+    min_area,
+    min_side,
+    natural_area,
+    snap,
+    to_cells,
+    to_ft,
+)
 from app.schemas.enums import RoomType
 
-#: Everything snaps to this grid. Half a foot keeps walls visually aligned
-#: without quantising small service rooms out of existence.
-GRID = 0.5
-
-#: Two edges within this distance are treated as the same wall line.
-WALL_TOLERANCE = 1.25
-
-#: Minimum sensible short side, by room family.
-MIN_SIDE: dict[RoomType, float] = {
-    RoomType.ATTACHED_BATHROOM: 4.0,
-    RoomType.COMMON_BATHROOM: 4.0,
-    RoomType.POOJA_ROOM: 3.5,
-    RoomType.STORE_ROOM: 3.5,
-    RoomType.UTILITY_ROOM: 3.5,
-    RoomType.WASH_AREA: 3.5,
-    RoomType.BALCONY: 3.5,
-    RoomType.PASSAGE: 3.0,
-    RoomType.FOYER: 4.0,
-    RoomType.STAIRCASE: 4.0,
-    RoomType.KITCHEN: 6.5,
-    RoomType.DINING_ROOM: 7.0,
-    RoomType.STUDY_ROOM: 7.0,
-    RoomType.GARDEN: 4.0,
-    RoomType.PARKING: 8.0,
-}
-DEFAULT_MIN_SIDE = 8.0  # bedrooms and living rooms
-
-#: Upper bound on floor area, by room type. Scaling a template up to a larger
-#: plot otherwise produces absurdities - a 150 sq ft toilet, or a bedroom four
-#: times the size of the living room. Surplus area is handed back to whichever
-#: neighbour is still under its own ceiling, which is what keeps the room
-#: proportions balanced across the plan.
-MAX_AREA: dict[RoomType, float] = {
-    # Wet and service areas
-    RoomType.ATTACHED_BATHROOM: 72.0,
-    RoomType.COMMON_BATHROOM: 66.0,
-    RoomType.POOJA_ROOM: 64.0,
-    RoomType.STORE_ROOM: 80.0,
-    RoomType.UTILITY_ROOM: 80.0,
-    RoomType.WASH_AREA: 80.0,
-    RoomType.PASSAGE: 130.0,
-    RoomType.FOYER: 100.0,
-    RoomType.STAIRCASE: 145.0,
-    RoomType.KITCHEN: 180.0,
-    # Habitable rooms
-    RoomType.MASTER_BEDROOM: 260.0,
-    RoomType.GUEST_BEDROOM: 210.0,
-    RoomType.CHILDREN_BEDROOM: 210.0,
-    RoomType.BEDROOM: 210.0,
-    RoomType.STUDY_ROOM: 180.0,
-    RoomType.LIVING_ROOM: 400.0,
-    RoomType.DINING_ROOM: 220.0,
-    # Outdoor
-    RoomType.BALCONY: 120.0,
-    RoomType.PARKING: 260.0,
-    RoomType.GARDEN: 320.0,
-}
-
-
-def max_area(room_type: RoomType) -> float:
-    return MAX_AREA.get(room_type, float("inf"))
-
-
-#: Floor area below which a room stops being usable for its purpose. Guards the
-#: habitable rooms against being carved down to nothing when a late requirement
-#: has to be squeezed in.
-MIN_AREA: dict[RoomType, float] = {
-    RoomType.LIVING_ROOM: 130.0,
-    RoomType.DINING_ROOM: 90.0,
-    RoomType.KITCHEN: 70.0,
-    RoomType.MASTER_BEDROOM: 120.0,
-    RoomType.GUEST_BEDROOM: 100.0,
-    RoomType.CHILDREN_BEDROOM: 100.0,
-    RoomType.BEDROOM: 100.0,
-    RoomType.STUDY_ROOM: 70.0,
-    RoomType.PARKING: 100.0,
-}
-
-
-def min_area(room_type: RoomType) -> float:
-    """Smallest sensible area, falling back to a square of the minimum side."""
-    return MIN_AREA.get(room_type, min_side(room_type) ** 2)
-
-
-def natural_area(room_type: RoomType) -> float:
-    """A room's unremarkable size - what to build when nobody said otherwise.
-
-    The minimum is the wrong answer here: it is the point at which a room stops
-    working, not the size anyone would draw. Sitting between the two bounds
-    gives a room the client did not think to measure a believable footprint
-    rather than the smallest one that would pass.
-    """
-    return (min_area(room_type) * max_area(room_type)) ** 0.5
-
-
-def snap(value: float, grid: float = GRID) -> float:
-    return round(round(value / grid) * grid, 2)
-
-
-def min_side(room_type: RoomType) -> float:
-    return MIN_SIDE.get(room_type, DEFAULT_MIN_SIDE)
+# NOTE: every constant above is defined once, in :mod:`app.geometry.units`.
+# This module re-exports them so the years of ``from app.geometry.primitives
+# import GRID, ...`` keep working while the solver reads from the single home.
 
 
 @dataclass

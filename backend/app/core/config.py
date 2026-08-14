@@ -35,6 +35,13 @@ class ImageProvider(str, Enum):
     NONE = "none"
 
 
+class GeometryEngine(str, Enum):
+    """Which layout engine produces the plans."""
+
+    LEGACY = "legacy"
+    SOLVER = "solver"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=(PROJECT_ROOT / ".env", BACKEND_ROOT / ".env"),
@@ -85,6 +92,14 @@ class Settings(BaseSettings):
     storage_dir: str = "storage/images"
     templates_dir: str = "data/templates"
     reference_images_dir: str = "../Templates"
+
+    # --- Geometry engine ----------------------------------------------------
+    #: ``legacy`` keeps the classic slicing/repair pipeline (the default for
+    #: now); ``solver`` uses the CP-SAT engine, which refuses infeasible briefs
+    #: and returns ``status: "infeasible"`` plus diagnostics instead.
+    geometry_engine: GeometryEngine = GeometryEngine.LEGACY
+    #: Wall-clock budget per CP-SAT solve, in seconds.
+    solver_time_limit_seconds: float = Field(default=3.0, ge=0.5, le=30.0)
 
     # --- Derived helpers ---------------------------------------------------
     @field_validator("log_level")

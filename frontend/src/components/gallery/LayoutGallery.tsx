@@ -97,35 +97,59 @@ interface CardProps {
 }
 
 function LayoutCard({ layout, index, compact, isSelected, onSelect, onPreview }: CardProps) {
+  const infeasible = layout.status === 'infeasible';
+
   return (
     <article
       className={cn(
         'card animate-fade-up overflow-hidden transition',
-        isSelected ? 'ring-2 ring-blueprint-600' : 'hover:shadow-lift',
+        infeasible
+          ? 'border-rose-200 bg-rose-50/50'
+          : isSelected
+            ? 'ring-2 ring-blueprint-600'
+            : 'hover:shadow-lift',
       )}
       style={{ animationDelay: `${index * 60}ms` }}
     >
-      <button
-        type="button"
-        onClick={onPreview}
-        className="group block w-full bg-ink-50"
-        aria-label={`Enlarge ${layout.name}`}
-      >
-        <img
-          src={imageUrl(layout)}
-          alt={`Floor plan: ${layout.name}, ${layout.bhk} on a ${layout.plot_size_label} plot`}
-          loading={index < 2 ? 'eager' : 'lazy'}
-          className="aspect-square w-full object-contain transition duration-300 group-hover:scale-[1.02]"
-        />
-      </button>
+      {infeasible ? (
+        <div className="flex aspect-square w-full flex-col items-center justify-center gap-3 bg-rose-50 p-6 text-center">
+          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-xl text-rose-600">
+            !
+          </span>
+          <p className="text-sm font-semibold text-rose-900">No layout possible</p>
+          <p className="max-w-[22rem] text-xs text-rose-700">
+            {layout.infeasibility?.detail ?? layout.description}
+          </p>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={onPreview}
+          className="group block w-full bg-ink-50"
+          aria-label={`Enlarge ${layout.name}`}
+        >
+          <img
+            src={imageUrl(layout)}
+            alt={`Floor plan: ${layout.name}, ${layout.bhk} on a ${layout.plot_size_label} plot`}
+            loading={index < 2 ? 'eager' : 'lazy'}
+            className="aspect-square w-full object-contain transition duration-300 group-hover:scale-[1.02]"
+          />
+        </button>
+      )}
 
       <div className={cn('space-y-3', compact ? 'p-4' : 'p-5')}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="truncate text-base font-semibold text-ink-900">{layout.name}</h3>
             <p className="mt-0.5 text-xs text-ink-500">
-              {layout.bhk} &middot; {layout.plot_size_label} &middot;{' '}
-              {layout.built_up_sqft.toLocaleString()} sq ft built-up
+              {infeasible ? (
+                <span className="text-rose-700">Brief cannot be packed</span>
+              ) : (
+                <>
+                  {layout.bhk} &middot; {layout.plot_size_label} &middot;{' '}
+                  {layout.built_up_sqft.toLocaleString()} sq ft built-up
+                </>
+              )}
             </p>
           </div>
           {isSelected ? (
@@ -135,19 +159,35 @@ function LayoutCard({ layout, index, compact, isSelected, onSelect, onPreview }:
           ) : null}
         </div>
 
-        {!compact ? (
+        {!compact && !infeasible ? (
           <p className="text-sm leading-relaxed text-ink-600">{layout.description}</p>
         ) : null}
 
+        {infeasible && layout.infeasibility?.suggestions.length ? (
+          <ul className="space-y-1 rounded-lg border border-rose-200 bg-white px-3 py-2">
+            {layout.infeasibility.suggestions.map((suggestion) => (
+              <li key={suggestion} className="text-xs leading-relaxed text-rose-800">
+                &middot; {suggestion}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge tone="blueprint">{Math.round(layout.match_score * 100)}% match</Badge>
-          <Badge>{layout.rooms.length} spaces</Badge>
-          <Badge>{layout.render_mode}</Badge>
-          {layout.vastu_score !== null ? (
-            <Badge tone="blueprint" title={layout.vastu_notes.join('\n')}>
-              {Math.round(layout.vastu_score * 100)}% vastu
-            </Badge>
-          ) : null}
+          {infeasible ? (
+            <Badge tone="rose">Infeasible</Badge>
+          ) : (
+            <>
+              <Badge tone="blueprint">{Math.round(layout.match_score * 100)}% match</Badge>
+              <Badge>{layout.rooms.length} spaces</Badge>
+              <Badge>{layout.render_mode}</Badge>
+              {layout.vastu_score !== null ? (
+                <Badge tone="blueprint" title={layout.vastu_notes.join('\n')}>
+                  {Math.round(layout.vastu_score * 100)}% vastu
+                </Badge>
+              ) : null}
+            </>
+          )}
         </div>
 
         <p className="text-xs text-ink-400">
@@ -155,16 +195,24 @@ function LayoutCard({ layout, index, compact, isSelected, onSelect, onPreview }:
         </p>
 
         <div className="flex gap-2 pt-1">
-          <Button
-            variant={isSelected ? 'secondary' : 'primary'}
-            onClick={onSelect}
-            className="flex-1"
-          >
-            {isSelected ? 'Your pick' : 'Select this layout'}
-          </Button>
-          <Button variant="ghost" onClick={onPreview}>
-            Enlarge
-          </Button>
+          {infeasible ? (
+            <Button variant="secondary" disabled className="flex-1">
+              Select this layout
+            </Button>
+          ) : (
+            <>
+              <Button
+                variant={isSelected ? 'secondary' : 'primary'}
+                onClick={onSelect}
+                className="flex-1"
+              >
+                {isSelected ? 'Your pick' : 'Select this layout'}
+              </Button>
+              <Button variant="ghost" onClick={onPreview}>
+                Enlarge
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </article>
@@ -177,7 +225,7 @@ function Badge({
   title,
 }: {
   children: React.ReactNode;
-  tone?: 'neutral' | 'blueprint';
+  tone?: 'neutral' | 'blueprint' | 'rose';
   title?: string;
 }) {
   return (
@@ -185,7 +233,11 @@ function Badge({
       title={title}
       className={cn(
         'rounded-md px-2 py-0.5 text-xs font-medium capitalize',
-        tone === 'blueprint' ? 'bg-blueprint-100 text-blueprint-800' : 'bg-ink-100 text-ink-600',
+        tone === 'blueprint'
+          ? 'bg-blueprint-100 text-blueprint-800'
+          : tone === 'rose'
+            ? 'bg-rose-100 text-rose-800'
+            : 'bg-ink-100 text-ink-600',
       )}
     >
       {children}
@@ -258,6 +310,9 @@ function MatchPanel({ matches }: { matches: TemplateMatch[] }) {
 }
 
 function PreviewDialog({ layout, onClose }: { layout: GeneratedLayout; onClose: () => void }) {
+  if (layout.status === 'infeasible') {
+    return null;
+  }
   return (
     <div
       role="dialog"

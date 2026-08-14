@@ -215,9 +215,13 @@ def assign_demands(
         requested += leaf.demand
 
     if requested > plot_area and requested > 0:
-        # The brief does not fit. Everyone gives up the same proportion, which
-        # keeps the plan's balance even though nobody gets what they asked for.
-        squeeze = plot_area / requested * 0.85
+        # The brief does not fit the plot, so everyone gives up the same
+        # proportion and the plan stays balanced even though nobody gets what
+        # they asked for. The *strict* proportional shortfall is reported by
+        # the solver engine, which refuses the brief outright instead; the
+        # legacy engine keeps proportional scaling here but without the old
+        # extra 15% haircut on top.
+        squeeze = plot_area / requested
         for leaf in sized:
             leaf.demand *= squeeze
         requested *= squeeze

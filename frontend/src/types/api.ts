@@ -133,6 +133,15 @@ export interface LayoutRoom {
   height: number;
 }
 
+export type LayoutStatus = 'feasible' | 'infeasible';
+
+export interface InfeasibilityDetail {
+  stage: string;
+  reason: string;
+  detail: string;
+  suggestions: string[];
+}
+
 export interface GeneratedLayout {
   id: string;
   name: string;
@@ -152,6 +161,12 @@ export interface GeneratedLayout {
   render_mode: string;
   validation_warnings: string[];
   seed: number;
+  /** "feasible" for a usable layout, "infeasible" when the solver refused the brief. */
+  status: LayoutStatus;
+  /** 0..100 from the geometry engine's scoring pass; null for the legacy engine. */
+  quality_score: number | null;
+  /** Populated only when status is "infeasible". */
+  infeasibility: InfeasibilityDetail | null;
   /** Null unless the brief asked for Vastu compliance. */
   vastu_score: number | null;
   vastu_notes: string[];

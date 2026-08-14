@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -45,6 +46,32 @@ class LayoutRoom(RoomPlacement):
     """A placed room in a generated layout (same geometry contract as templates)."""
 
 
+class LayoutDoor(BaseModel):
+    """A doorway cut between two rooms, sitting on their shared wall."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    room_from: str
+    room_to: str
+    x: float
+    y: float
+    width: float = 3.0
+    orientation: Literal["vertical", "horizontal"] = "vertical"
+    swing: Literal["in", "out"] = "in"
+
+
+class LayoutWindow(BaseModel):
+    """A window in an external wall."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    room: str
+    x: float
+    y: float
+    width: float = 4.0
+    orientation: Literal["vertical", "horizontal"] = "horizontal"
+
+
 class GeneratedLayout(BaseModel):
     """One of the 3-4 variations returned to the gallery."""
 
@@ -68,6 +95,24 @@ class GeneratedLayout(BaseModel):
     render_mode: str = Field(description="vector | flux | hybrid - how the image was produced")
     validation_warnings: list[str] = Field(default_factory=list)
     seed: int
+    #: ``"feasible"`` for a usable layout; ``"infeasible"`` when the solver
+    #: proved no layout can satisfy the brief. Additive - the legacy engine
+    #: always emits ``"feasible"``.
+    status: Literal["feasible", "infeasible"] = "feasible"
+    #: 0..100 quality score from the geometry engine's scoring pass, when the
+    #: engine produces one. ``None`` for the legacy engine.
+    quality_score: float | None = Field(default=None, ge=0.0, le=100.0)
+    #: Why the brief is infeasible and what would make it work. Populated only
+    #: when ``status == "infeasible"``.
+    infeasibility: dict | None = None
+    #: Modeled doorways between rooms (Milestone B). Empty for the legacy engine.
+    doors: list[LayoutDoor] = Field(
+        default_factory=list, description="Doorways between adjacent rooms"
+    )
+    #: Modeled windows on external walls (Milestone B). Empty for the legacy engine.
+    windows: list[LayoutWindow] = Field(
+        default_factory=list, description="Windows on external walls"
+    )
     #: ``None`` unless the brief asked for Vastu compliance.
     vastu_score: float | None = Field(
         default=None, ge=0.0, le=1.0, description="How far this plan follows the chosen principles"

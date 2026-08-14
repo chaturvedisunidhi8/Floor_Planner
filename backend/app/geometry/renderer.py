@@ -487,7 +487,22 @@ class FloorPlanRenderer:
         palette: Palette,
         wall: int,
     ) -> None:
-        """Doors between adjacent rooms, windows on external walls."""
+        """Doors and windows from the model when present, else inferred.
+
+        Solver plans carry modeled ``plan.doors`` / ``plan.windows`` (validated
+        geometry), so those are drawn exactly. Legacy plans have none, so their
+        openings are re-derived from room adjacency and external walls as
+        before.
+        """
+        if plan.doors or plan.windows:
+            for door in plan.doors:
+                pair = self._door_room_pair(door, plan.rooms)
+                if pair is not None:
+                    self._draw_door(draw, pair[0], pair[1], px, ppf, palette)
+            for window in plan.windows:
+                self._draw_modeled_window(draw, window, px, ppf, palette, wall)
+            return
+
         drawn: set[tuple[int, int]] = set()
         for i, a in enumerate(plan.rooms):
             for j in range(i + 1, len(plan.rooms)):
@@ -499,6 +514,55 @@ class FloorPlanRenderer:
 
         for room in plan.rooms:
             self._draw_windows(draw, room, plan, px, ppf, palette, wall)
+
+    @staticmethod
+    def _door_room_pair(door, rooms: list[Rect]) -> tuple[Rect, Rect] | None:
+        """The two rooms whose shared wall ``door`` sits on, or ``None``."""
+        tolerance = 1.25
+        for i, a in enumerate(rooms):
+            for b in rooms[i + 1 :]:
+                run = a.shared_wall_length(b)
+                if run <= 0:
+                    continue
+                if door.orientation == "vertical":
+                    if not (abs(a.x2 - b.x) <= tolerance or abs(b.x2 - a.x) <= tolerance):
+                        continue
+                    line = (a.x2 + b.x) / 2 if abs(a.x2 - b.x) <= tolerance else (b.x2 + a.x) / 2
+                    if abs(door.x - line) > tolerance:
+                        continue
+                    lo, hi = max(a.y, b.y), min(a.y2, b.y2)
+                    inside = door.y >= lo - tolerance and door.y + door.width <= hi + tolerance
+                else:
+                    if not (abs(a.y2 - b.y) <= tolerance or abs(b.y2 - a.y) <= tolerance):
+                        continue
+                    line = (a.y2 + b.y) / 2 if abs(a.y2 - b.y) <= tolerance else (b.y2 + a.y) / 2
+                    if abs(door.y - line) > tolerance:
+                        continue
+                    lo, hi = max(a.x, b.x), min(a.x2, b.x2)
+                    inside = door.x >= lo - tolerance and door.x + door.width <= hi + tolerance
+                if inside:
+                    return a, b
+        return None
+
+    @staticmethod
+    def _draw_modeled_window(
+        draw: ImageDraw.ImageDraw,
+        window,
+        px,
+        ppf: float,
+        palette: Palette,
+        wall: int,
+    ) -> None:
+        """A window from the model, at its exact (x, y, width, orientation)."""
+        thickness = max(3, int(wall * 0.75))
+        if window.orientation == "vertical":
+            x1, y1 = px(window.x, window.y + window.width)
+            x2, y2 = px(window.x, window.y)
+        else:
+            x1, y1 = px(window.x, window.y)
+            x2, y2 = px(window.x + window.width, window.y)
+        draw.line([x1, y1, x2, y2], fill=palette.paper, width=thickness)
+        draw.line([x1, y1, x2, y2], fill=palette.muted, width=max(1, thickness // 3))
 
     @staticmethod
     def _draw_door(

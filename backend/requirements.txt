@@ -1,26 +1,32 @@
 # --- Web framework ---------------------------------------------------------
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-python-multipart==0.0.20
+fastapi==0.141.1
+uvicorn[standard]==0.52.3
+python-multipart==0.0.32
 
 # --- Configuration & validation --------------------------------------------
-pydantic==2.10.5
-pydantic-settings==2.7.1
-python-dotenv==1.0.1
+pydantic==2.13.4
+pydantic-settings==2.15.0
+python-dotenv==1.2.2
 
 # --- Persistence -----------------------------------------------------------
-SQLAlchemy==2.0.36
-psycopg[binary]==3.2.3
+SQLAlchemy==2.0.52
+psycopg[binary]==3.3.4
 
 # --- AI / retrieval --------------------------------------------------------
-groq==0.15.0
-sentence-transformers==3.3.1
-faiss-cpu==1.9.0.post1
-numpy==2.2.1
+groq==1.6.0
+# sentence-transformers is optional at runtime (HashingEncoder fallback); when
+# installed, keep it on a version that ships cp314 wheels.
+numpy==2.5.2
+faiss-cpu==1.15.0
 
 # --- Imaging ---------------------------------------------------------------
-Pillow==11.1.0
+Pillow==12.3.0
 httpx==0.28.1
 
+# --- Geometry engine -------------------------------------------------------
+ortools==9.15.6755
+shapely==2.1.2
+networkx==3.6.1
+
 # --- Tooling ---------------------------------------------------------------
-tenacity==9.0.0
+tenacity==9.1.4
