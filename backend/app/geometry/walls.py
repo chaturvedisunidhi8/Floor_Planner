@@ -76,6 +76,14 @@ class WallConfig:
     min_opening: float = 2.5
     #: External wall run below which a window is not worth cutting.
     window_min_run: float = 6.0
+    #: Feet a door must stay away from the end of its wall run.
+    door_corner_clearance: float = 1.5
+    #: Minimum gap between two doors on the same wall.
+    door_spacing: float = 3.0
+    #: Feet a window must stay away from the end of its wall run.
+    window_corner_clearance: float = 1.0
+    #: Minimum gap between a window and a door on the same wall.
+    window_door_spacing: float = 3.0
 
 
 #: The engine-wide wall configuration. Modules import this instead of defining

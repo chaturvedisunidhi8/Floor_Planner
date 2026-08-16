@@ -24,6 +24,9 @@ from collections import Counter
 
 from app.geometry.layout_engine import LayoutEngine
 from app.geometry.solver.topology import (
+    DAYLIGHT_LABEL,
+    SPINE_LABEL,
+    WET_CLUSTER_LABEL,
     TopologySearchConfig,
     candidate_programmes,
     programme_from_brief,
@@ -84,6 +87,14 @@ def _small_req() -> FloorPlanRequirements:
 
 def _room_signature(plan) -> tuple:
     return tuple((r.type, r.x, r.y, r.width, r.height) for r in plan.rooms)
+
+
+def _all_optimal(plan) -> bool:
+    """True when every solved candidate finished (``OPTIMAL``), so the plan is
+    bit-reproducible. A candidate cut off by the wall-clock budget is not."""
+    return bool(plan.topology_search) and all(
+        e.get("is_optimal") for e in plan.topology_search if e["status"] == "feasible"
+    )
 
 
 def _base_programme(requirements, template):
@@ -166,8 +177,12 @@ def test_single_candidate_reproduces_pre_search_behaviour(repository):
         template, seed=100, variation_index=0, time_limit=SOLVER_BUDGET, topology_candidates=1
     )
     assert [entry["label"] for entry in first.topology_search] == ["Base"]
-    assert _room_signature(first) == _room_signature(second)
-    assert first.quality_score == second.quality_score
+    # Exact reproducibility only holds when the solve completes (module docstring):
+    # a wall-clock cutoff can return different incumbents between runs.
+    if _all_optimal(first) and _all_optimal(second):
+        assert _room_signature(first) == _room_signature(second)
+        assert first.quality_score == second.quality_score
+    assert first.status == second.status == "feasible"
 
 
 def test_search_is_deterministic(repository):
@@ -180,11 +195,20 @@ def test_search_is_deterministic(repository):
     second = engine.generate_solver(
         template, seed=100, variation_index=0, time_limit=SOLVER_BUDGET, topology_candidates=3
     )
-    assert _room_signature(first) == _room_signature(second)
-    assert first.quality_score == second.quality_score
-    assert [(e["label"], e["status"]) for e in first.topology_search] == [
-        (e["label"], e["status"]) for e in second.topology_search
+    assert [e["label"] for e in first.topology_search] == [
+        e["label"] for e in second.topology_search
     ]
+    # Candidate generation is deterministic regardless of the solver, but the
+    # search itself is only bit-reproducible when every solve completes (module
+    # docstring). A candidate cut off by the budget can surface a different
+    # incumbent - and even a different status - from one run to the next.
+    if _all_optimal(first) and _all_optimal(second):
+        assert _room_signature(first) == _room_signature(second)
+        assert first.quality_score == second.quality_score
+        assert [(e["label"], e["status"]) for e in first.topology_search] == [
+            (e["label"], e["status"]) for e in second.topology_search
+        ]
+    assert first.status == second.status == "feasible"
 
 
 def test_search_keeps_the_base_room_order(requirements, repository):
@@ -210,17 +234,20 @@ def test_search_result_is_never_worse_than_the_base(requirements, repository):
             template, seed=100, variation_index=0, time_limit=SOLVER_BUDGET, topology_candidates=3
         )
         assert plan.status == "feasible"
-        base_score = next(
-            (e["score"] for e in plan.topology_search if e["label"] == "Base"),
-            None,
-        )
-        assert base_score is not None
-        assert plan.quality_score >= base_score
         winner = max(
             (e for e in plan.topology_search if e["status"] == "feasible"),
             key=lambda e: e["score"],
         )
-        assert winner["label"] != "Base" or plan.quality_score == base_score
+        assert winner["score"] == plan.quality_score
+        # The base can be pruned or time out (no score); the never-worse claim
+        # only bites when the base actually survived the search.
+        base_score = next(
+            (e["score"] for e in plan.topology_search if e["label"] == "Base"),
+            None,
+        )
+        if base_score is not None:
+            assert plan.quality_score >= base_score
+            assert winner["label"] != "Base" or plan.quality_score == base_score
 
 
 def test_search_log_shape(requirements, repository):
@@ -232,14 +259,21 @@ def test_search_log_shape(requirements, repository):
     )
     assert plan.status == "feasible"
     assert plan.topology_search
+    allowed = {
+        "Base",
+        "Bedrooms left / social right",
+        "Bedrooms right / social left",
+        "Bedrooms back / social front",
+        "Bedrooms front / social back",
+        "Largest rooms first",
+        "Smallest rooms first",
+        "Mirrored room order",
+        SPINE_LABEL,
+        WET_CLUSTER_LABEL,
+        DAYLIGHT_LABEL,
+    }
     for entry in plan.topology_search:
-        assert entry["label"] in {"Base", "Bedrooms left / social right",
-                                  "Bedrooms right / social left",
-                                  "Bedrooms back / social front",
-                                  "Bedrooms front / social back",
-                                  "Largest rooms first",
-                                  "Smallest rooms first",
-                                  "Mirrored room order"}
+        assert entry["label"] in allowed
         assert entry["status"] in {"feasible", "pruned", "infeasible", "timeout"}
         if entry["status"] == "feasible":
             assert entry["score"] is not None

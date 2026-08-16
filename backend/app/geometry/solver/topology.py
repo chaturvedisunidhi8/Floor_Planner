@@ -34,7 +34,9 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from app.geometry.connectivity import CIRCULATION_TYPES
+from app.geometry.models import Plan
 from app.geometry.primitives import Rect
+from app.geometry.quality import HABITABLE, external_edges, quality_metrics
 from app.geometry.units import max_area, min_area, min_side, natural_area
 from app.geometry.walls import WALLS
 from app.schemas.enums import RoomType
@@ -89,6 +91,17 @@ PRIVACY_AWAY_FROM: frozenset[RoomType] = frozenset(
 #: a real place to cut the door that connects the two rooms.
 #: Owned by :data:`app.geometry.walls.WALLS`.
 MIN_OPENING = WALLS.min_opening
+
+#: Rooms that read as a corridor run once aligned on one band.
+_CORRIDOR_RUN_TYPES: frozenset[RoomType] = frozenset(
+    {RoomType.PASSAGE, RoomType.FOYER}
+)
+
+#: Stable labels for the adaptive candidates, so reports and tests can name
+#: them without string-matching the solver's search log.
+SPINE_LABEL = "Spine corridor"
+WET_CLUSTER_LABEL = "Wet rooms near bedrooms"
+DAYLIGHT_LABEL = "Daylight on the envelope"
 
 
 @dataclass(frozen=True)
@@ -147,6 +160,16 @@ class SpatialBias:
     right: tuple[int, ...] = ()
     bottom: tuple[int, ...] = ()
     top: tuple[int, ...] = ()
+    #: Indices rewarded for sharing one vertical band - their x-intervals all
+    #: overlap - so they stack into a column. This is how an adaptive candidate
+    #: asks the solver for a continuous north-south corridor run.
+    align_x: tuple[int, ...] = ()
+    #: Indices rewarded for sharing one horizontal band - their y-intervals all
+    #: overlap - so they sit in a row. This asks for an east-west corridor run.
+    align_y: tuple[int, ...] = ()
+    #: Indices rewarded for touching any plot boundary, which is what gives a
+    #: room an external wall (daylight) and a corner room two (cross-ventilation).
+    touch_edge: tuple[int, ...] = ()
     #: Objective credit per biased room. The CP-SAT objective is integer, so
     #: this must be a whole number; ``20`` is small next to the area-deviation
     #: terms but large enough to steer a typical 1-4 BHK pack.
@@ -488,6 +511,133 @@ def _permuted_programme(base: Programme, order: tuple[int, ...], label: str) -> 
         label=label,
         order=order,
     )
+
+
+def _bedrooms_half(plan: Plan, bedrooms: tuple[int, ...]) -> str:
+    """The half of the plot holding the most bedrooms, for wet clustering.
+
+    ``left``/``right`` split on x, ``bottom``/``top`` on y. When both axes are
+    tied the tie-breaks are deterministic (x axis, then the left/bottom side) so
+    the adaptive candidate list is stable for a given base plan.
+    """
+    n = len(bedrooms)
+    left = sum(
+        1
+        for i in bedrooms
+        if plan.rooms[i].x + plan.rooms[i].width / 2 <= plan.plot_width / 2
+    )
+    bottom = sum(
+        1
+        for i in bedrooms
+        if plan.rooms[i].y + plan.rooms[i].height / 2 <= plan.plot_length / 2
+    )
+    right, top = n - left, n - bottom
+    if max(left, right) >= max(bottom, top):
+        return "left" if left >= right else "right"
+    return "bottom" if bottom >= top else "top"
+
+
+def adaptive_programmes(
+    base: Programme, plan: Plan, *, weight: int = 20
+) -> list[Programme]:
+    """Targeted candidates for the base plan's measured weaknesses.
+
+    The standard search diversifies *blindly* - zoning halves, room orders.
+    This function reads the base plan's :class:`QualityMetrics` and returns at
+    most two candidates whose soft spatial bias directly attacks the worst
+    measured axes, so the engine spends its fixed candidate budget where it is
+    known to help instead of on near-copies of a packing. Each candidate keeps
+    the base room set, the base access model and ``order=None``, so the
+    connectivity guarantee is identical and rooms still come back in the base
+    programme's order.
+
+    ``plan.rooms`` must be in the base programme's spec order (which the engine
+    guarantees with ``_remap_to_base_order``), because spec index ``i`` is read
+    against ``plan.rooms[i]``.
+    """
+    metrics = quality_metrics(plan)
+    candidates: list[Programme] = []
+
+    def make(label: str, bias: SpatialBias) -> Programme:
+        return Programme(
+            specs=base.specs,
+            access_requirements=base.access_requirements,
+            adjacency_pairs=base.adjacency_pairs,
+            forbidden_pairs=base.forbidden_pairs,
+            entrance_index=base.entrance_index,
+            spatial_bias=bias,
+            label=label,
+        )
+
+    # 1. Fragmented corridor strips -> one continuous spine. Fragmentation is
+    #    only measurable when the brief actually carries corridor rooms (the
+    #    template's passage/foyer run); with fewer than two there is nothing to
+    #    align. A deep plot wants a north-south run (share one x band), a wide
+    #    plot an east-west run (share one y band).
+    corridor = tuple(
+        i for i, spec in enumerate(base.specs) if spec.type in _CORRIDOR_RUN_TYPES
+    )
+    if (
+        len(corridor) >= 2
+        and metrics.corridor_fragmentation is not None
+        and metrics.corridor_fragmentation > 0.0
+    ):
+        if plan.plot_length >= plan.plot_width:
+            bias = SpatialBias(align_x=corridor, weight=weight)
+        else:
+            bias = SpatialBias(align_y=corridor, weight=weight)
+        candidates.append(make(SPINE_LABEL, bias))
+
+    # 2. Wet rooms not pulled towards the bedrooms: slender bathrooms, a
+    #    bathroom against the social core, or bathrooms sharing no wall with
+    #    any bedroom. The bias pushes every bathroom into the half the bedrooms
+    #    already dominate, which is the en-suite rule generalised to the whole
+    #    wet zone.
+    bathrooms = tuple(
+        i for i, spec in enumerate(base.specs) if spec.type.is_bathroom
+    )
+    bedrooms = tuple(
+        i for i, spec in enumerate(base.specs) if spec.type.is_bedroom
+    )
+    wet_weak = (
+        metrics.slender_bathrooms > 0
+        or metrics.bathroom_social_walls > 0
+        or (
+            metrics.common_bath_bedroom_share is not None
+            and metrics.common_bath_bedroom_share < 0.5
+        )
+        or (
+            metrics.attached_bath_bedroom_share is not None
+            and metrics.attached_bath_bedroom_share < 0.5
+        )
+    )
+    if bathrooms and bedrooms and wet_weak:
+        half = _bedrooms_half(plan, bedrooms)
+        if half == "left":
+            bias = SpatialBias(left=bathrooms, weight=weight)
+        elif half == "right":
+            bias = SpatialBias(right=bathrooms, weight=weight)
+        elif half == "bottom":
+            bias = SpatialBias(bottom=bathrooms, weight=weight)
+        else:
+            bias = SpatialBias(top=bathrooms, weight=weight)
+        candidates.append(make(WET_CLUSTER_LABEL, bias))
+
+    # 3. Habitable rooms starved of daylight: fewer than seven in ten on an
+    #    external wall, or fewer than four in ten cross-ventilated. The bias
+    #    rewards them touching any plot boundary - a window for one edge, a
+    #    corner room for two (cross-ventilation).
+    habitable = tuple(
+        i for i, spec in enumerate(base.specs) if spec.type in HABITABLE
+    )
+    if habitable:
+        lit = sum(1 for i in habitable if external_edges(plan.rooms[i], plan) >= 1)
+        if lit / len(habitable) < 0.7 or metrics.cross_ventilated / len(habitable) < 0.4:
+            candidates.append(
+                make(DAYLIGHT_LABEL, SpatialBias(touch_edge=habitable, weight=weight))
+            )
+
+    return candidates[:2]
 
 
 def candidate_programmes(

@@ -26,6 +26,7 @@ yields the same plan - the same reproducibility contract as the legacy engine.
 
 from __future__ import annotations
 
+import itertools
 import math
 import time
 from collections.abc import Sequence
@@ -67,6 +68,11 @@ class SolverOutcome:
     #: it. A solver/extraction bug, never repaired - the outcome comes back
     #: ``infeasible`` so no caller can return the invalid geometry.
     validation_failed: bool = False
+    #: True when the solve reached ``OPTIMAL`` and so ended deterministically.
+    #: A ``FEASIBLE`` verdict means the wall-clock budget cut the search off
+    #: mid-flight - the incumbent (and therefore the plan) can differ between
+    #: runs even with a fixed seed, because the stop point is wall-clock based.
+    is_optimal: bool = False
 
 
 def _cell_bounds(spec: RoomSpec, extent: int, *, shape: bool) -> tuple[int, int]:
@@ -301,6 +307,16 @@ def _add_spatial_bias(
     but is never forced into it - which is why a biased candidate can never turn
     a feasible brief infeasible. This is the topology-search lever that makes a
     zoning variant genuinely different from the base packing.
+
+    ``align_x``/``align_y`` reward the named rooms sharing one band: for every
+    pair, a boolean worth ``-bias.weight`` is set only when their intervals on
+    the shared axis overlap, i.e. they sit side by side on the same spine. A
+    corridor candidate leans on this to ask for one continuous run instead of
+    scattered strips. ``touch_edge`` rewards each named room with a boolean for
+    touching any plot boundary, which is the geometry behind an external wall
+    and, at a corner, cross-ventilation. All three are soft pressure in the
+    objective only - never a hard constraint - so no bias can make a feasible
+    brief infeasible.
     """
     for index in bias.left:
         var = model.NewBoolVar(f"sb_l_{index}")
@@ -317,6 +333,30 @@ def _add_spatial_bias(
     for index in bias.top:
         var = model.NewBoolVar(f"sb_t_{index}")
         model.Add(2 * starts_y[index] + heights[index] >= H).OnlyEnforceIf(var)
+        terms.append(-bias.weight * var)
+    for axis, group in (("x", bias.align_x), ("y", bias.align_y)):
+        for a, b in itertools.combinations(group, 2):
+            var = model.NewBoolVar(f"sb_a{axis}_{a}_{b}")
+            if axis == "x":
+                model.Add(starts_x[a] + widths[a] >= starts_x[b] + 1).OnlyEnforceIf(var)
+                model.Add(starts_x[b] + widths[b] >= starts_x[a] + 1).OnlyEnforceIf(var)
+            else:
+                model.Add(starts_y[a] + heights[a] >= starts_y[b] + 1).OnlyEnforceIf(var)
+                model.Add(starts_y[b] + heights[b] >= starts_y[a] + 1).OnlyEnforceIf(var)
+            terms.append(-bias.weight * var)
+    for index in bias.touch_edge:
+        var = model.NewBoolVar(f"sb_e_{index}")
+        on_edge = []
+        for side, expr in (
+            ("l", starts_x[index] == 0),
+            ("r", starts_x[index] + widths[index] == W),
+            ("b", starts_y[index] == 0),
+            ("t", starts_y[index] + heights[index] == H),
+        ):
+            side_var = model.NewBoolVar(f"sb_e{side}_{index}")
+            model.Add(expr).OnlyEnforceIf(side_var)
+            on_edge.append(side_var)
+        model.Add(sum(on_edge) >= 1).OnlyEnforceIf(var)
         terms.append(-bias.weight * var)
 
 
@@ -500,4 +540,5 @@ def solve(
         elapsed,
         budget,
         objective=float(solver.ObjectiveValue()),
+        is_optimal=(result == cp_model.OPTIMAL),
     )

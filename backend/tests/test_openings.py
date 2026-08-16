@@ -11,12 +11,14 @@ the one thing you may walk through a bedroom to reach.
 from __future__ import annotations
 
 import networkx as nx
+import pytest
 
 from app.geometry.connectivity import adjacency_graph, door_rooms, stranded_indices
-from app.geometry.doors import DOOR_WIDTH, model_doors
+from app.geometry.doors import DOOR_WIDTH, _reposition_doors, model_doors
 from app.geometry.envelope import Envelope
 from app.geometry.models import Door, Plan, Room, Window
 from app.geometry.validation import validate_plan
+from app.geometry.walls import WALLS
 from app.geometry.windows import MAX_WIDTH, model_windows
 from app.schemas.enums import RoomType
 
@@ -104,6 +106,32 @@ def test_model_doors_vertical_wall_coordinates() -> None:
     assert abs(door.y + door.width / 2 - 10.0) < 1e-9
 
 
+def test_reposition_doors_keeps_spacing_on_one_wall() -> None:
+    wall = ("horizontal", 0.0, 20.0, 10.0)
+    first = Door(RoomType.LIVING_ROOM, RoomType.KITCHEN, 8.5, 10.0, DOOR_WIDTH, "horizontal")
+    second = Door(RoomType.KITCHEN, RoomType.DINING_ROOM, 8.5, 10.0, DOOR_WIDTH, "horizontal")
+    doors = _reposition_doors([(first, wall), (second, wall)])
+    starts = sorted(d.x for d in doors)
+    assert starts[1] - (starts[0] + DOOR_WIDTH) == pytest.approx(WALLS.door_spacing)
+    # The row is centred and stays clear of both corners.
+    assert starts[0] == pytest.approx(5.5)
+    assert starts[0] >= WALLS.door_corner_clearance
+    assert starts[1] + DOOR_WIDTH <= 20.0 - WALLS.door_corner_clearance
+
+
+def test_reposition_doors_short_wall_spreads_evenly() -> None:
+    wall = ("horizontal", 0.0, 8.0, 10.0)
+    first = Door(RoomType.LIVING_ROOM, RoomType.KITCHEN, 2.5, 10.0, DOOR_WIDTH, "horizontal")
+    second = Door(RoomType.KITCHEN, RoomType.DINING_ROOM, 2.5, 10.0, DOOR_WIDTH, "horizontal")
+    doors = _reposition_doors([(first, wall), (second, wall)])
+    starts = sorted(d.x for d in doors)
+    # Full spacing plus clearance does not fit: doors touch, still in bounds
+    # and centred on the run (a foot of margin each side).
+    assert starts[1] == pytest.approx(starts[0] + DOOR_WIDTH)
+    assert starts[0] >= 0.0
+    assert starts[1] + DOOR_WIDTH == pytest.approx(7.0)
+
+
 # --- model_windows ----------------------------------------------------------
 
 def test_model_windows_on_external_walls_centered() -> None:
@@ -142,6 +170,25 @@ def test_model_windows_skips_parking_and_garden() -> None:
 def test_model_windows_none_for_short_external_wall() -> None:
     plan = _plan([(RoomType.KITCHEN, "Kitchen", 0, 0, 5, 5)], width=30, length=30)
     assert model_windows(plan) == []
+
+
+def test_model_windows_stays_clear_of_door_on_same_wall() -> None:
+    # The kitchen shares the living room's external x=0 wall (a door is cut
+    # there); the left window must slide up to keep ``window_door_spacing``.
+    plan = _plan(
+        [
+            (RoomType.LIVING_ROOM, "Living", 0, 0, 10, 20),
+            (RoomType.KITCHEN, "Kitchen", -10, 5, 10, 4),
+        ],
+        width=20,
+        length=20,
+    )
+    plan.doors = model_doors(plan)
+    door = plan.doors[0]
+    assert door.orientation == "vertical" and door.x == 0.0
+    left = next(w for w in model_windows(plan) if w.orientation == "vertical")
+    assert left.x == 0.0
+    assert left.y == pytest.approx(door.y + door.width + WALLS.window_door_spacing)
 
 
 # --- connectivity -----------------------------------------------------------
