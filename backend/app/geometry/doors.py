@@ -63,20 +63,34 @@ def _doors_on_access_edges(
     """One door per access edge, on the shared wall the solver produced.
 
     A requirement whose room ends up sharing a wall with several candidates
-    still gets exactly one door - the first candidate in its preference order
-    with a usable shared run. A requirement with no usable wall has nothing to
-    model; the strict gate then rejects the plan, so this never silently drops
-    an edge that was promised.
+    still gets exactly one door. The candidate is chosen in preference order,
+    but a candidate is only taken on the *first* pass if its shared run can
+    hold a corner-clear door (``door_clear_run``); a second pass accepts any
+    run at least ``min_opening`` long. The solver guarantees a corner-clear run
+    on at least one candidate, so the first pass almost always wins and the
+    door ends up clear of its jambs. A requirement with no usable wall has
+    nothing to model; the strict gate then rejects the plan, so this never
+    silently drops an edge that was promised.
     """
     placed: list[tuple[Door, Wall]] = []
     for requirement in access_requirements:
         for candidate in requirement.candidates:
             if candidate == requirement.room or not (0 <= candidate < len(plan.rooms)):
                 continue
-            result = _door_between(plan, requirement.room, candidate, min_opening)
+            result = _door_between(
+                plan, requirement.room, candidate, max(min_opening, WALLS.door_clear_run)
+            )
             if result is not None:
                 placed.append(result)
                 break
+        else:
+            for candidate in requirement.candidates:
+                if candidate == requirement.room or not (0 <= candidate < len(plan.rooms)):
+                    continue
+                result = _door_between(plan, requirement.room, candidate, min_opening)
+                if result is not None:
+                    placed.append(result)
+                    break
     return _reposition_doors(placed)
 
 
@@ -139,11 +153,12 @@ def _reposition_doors(placed: Sequence[tuple[Door, Wall]]) -> list[Door]:
 
     Doors are grouped by the exact wall run they sit on and re-placed as one
     row, centred on the run: gaps of ``door_spacing`` with corner clearance
-    where the wall allows it, plain ``door_spacing`` without clearance if the
-    wall is too short, flush against each other if even that is too tight, and
-    left exactly where they were when the wall cannot hold them in bounds at
-    all. The ladder only improves on the original centred doors - it never
-    leaves the plan with a new overlap or a door off its wall.
+    where the wall allows it, then a shrinking ladder that keeps the *corner
+    clearance* as long as possible - a door clear of its jambs is worth more
+    than a gap between two leaves - before giving up spacing, then clearance,
+    then leaving the doors where they were. The ladder only improves on the
+    original centred doors - it never leaves the plan with a new overlap or a
+    door off its wall.
     """
     doors = [door for door, _wall in placed]
     groups: dict[Wall, list[int]] = {}
@@ -158,8 +173,11 @@ def _reposition_doors(placed: Sequence[tuple[Door, Wall]]) -> list[Door]:
         widths = [doors[i].width for i in ordered]
         total = sum(widths)
         count = len(ordered)
+        half_spacing = WALLS.door_spacing / 2
         for spacing, clearance in (
             (WALLS.door_spacing, WALLS.door_corner_clearance),
+            (half_spacing, WALLS.door_corner_clearance),
+            (0.0, WALLS.door_corner_clearance),
             (WALLS.door_spacing, 0.0),
             (0.0, 0.0),
         ):

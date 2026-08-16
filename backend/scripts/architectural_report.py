@@ -34,6 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging
+from app.geometry.accuracy import accuracy_metrics
 from app.geometry.layout_engine import LayoutEngine
 from app.geometry.quality import quality_metrics
 from app.repositories.template_repository import JsonTemplateRepository
@@ -47,6 +48,7 @@ class Metrics:
     name: str = ""
     plans: int = 0
     scores: list[float] = field(default_factory=list)
+    geometry_scores: list[float] = field(default_factory=list)
     corridor_fragmentation: list[float] = field(default_factory=list)
     corridor_min_width: list[float] = field(default_factory=list)
     door_corner_violations: int = 0
@@ -63,12 +65,21 @@ class Metrics:
     cross_ventilation: list[float] = field(default_factory=list)
     uncovered_fraction: list[float] = field(default_factory=list)
     balcony_without_habitable: int = 0
+    furniture_rooms: int = 0
+    furniture_shortfalls: int = 0
+    aspect: list[float] = field(default_factory=list)
+    stray_edges: int = 0
+    off_grid_edges: int = 0
+    ledger_ok_plans: int = 0
+    ledger_ok_count: int = 0
+    label_mismatches: int = 0
     winners: Counter = field(default_factory=Counter)
     times: list[float] = field(default_factory=list)
 
     def merge(self, other: Metrics) -> None:
         self.plans += other.plans
         self.scores.extend(other.scores)
+        self.geometry_scores.extend(other.geometry_scores)
         self.corridor_fragmentation.extend(other.corridor_fragmentation)
         self.corridor_min_width.extend(other.corridor_min_width)
         self.door_corner_violations += other.door_corner_violations
@@ -85,6 +96,14 @@ class Metrics:
         self.cross_ventilation.extend(other.cross_ventilation)
         self.uncovered_fraction.extend(other.uncovered_fraction)
         self.balcony_without_habitable += other.balcony_without_habitable
+        self.furniture_rooms += other.furniture_rooms
+        self.furniture_shortfalls += other.furniture_shortfalls
+        self.aspect.extend(other.aspect)
+        self.stray_edges += other.stray_edges
+        self.off_grid_edges += other.off_grid_edges
+        self.ledger_ok_plans += other.ledger_ok_plans
+        self.ledger_ok_count += other.ledger_ok_count
+        self.label_mismatches += other.label_mismatches
         self.winners.update(other.winners)
         self.times.extend(other.times)
 
@@ -121,6 +140,8 @@ def _collect(brief, template, engine, seed, variation, budget, candidates, m: Me
     m.plans += 1
     if plan.quality_score is not None:
         m.scores.append(plan.quality_score)
+    if plan.geometry_score is not None:
+        m.geometry_scores.append(plan.geometry_score)
     if plan.topology_search:
         survivors = (
             e
@@ -157,6 +178,18 @@ def _collect(brief, template, engine, seed, variation, budget, candidates, m: Me
     )
     m.uncovered_fraction.append(metrics.uncovered_fraction)
     m.balcony_without_habitable += metrics.balcony_without_habitable
+    m.furniture_rooms += metrics.furniture_rooms
+    m.furniture_shortfalls += metrics.furniture_shortfalls
+
+    accuracy = accuracy_metrics(plan, brief[1])
+    if accuracy.mean_aspect is not None:
+        m.aspect.append(accuracy.mean_aspect)
+    m.stray_edges += accuracy.stray_edges
+    m.off_grid_edges += accuracy.off_grid_edges
+    if accuracy.ledger_ok is not None:
+        m.ledger_ok_plans += 1
+        m.ledger_ok_count += int(accuracy.ledger_ok)
+    m.label_mismatches += accuracy.label_mismatches
 
 
 def _summary(m: Metrics) -> dict:
@@ -181,6 +214,13 @@ def _summary(m: Metrics) -> dict:
         "cross_ventilated_rooms_share": _mean(m.cross_ventilation),
         "uncovered_fraction": _mean(m.uncovered_fraction),
         "balcony_without_habitable": m.balcony_without_habitable,
+        "geometry_score_avg": _mean(m.geometry_scores),
+        "furniture_shortfalls_share": _fraction(m.furniture_shortfalls, m.furniture_rooms),
+        "aspect_ratio": _mean(m.aspect),
+        "stray_edges_per_plan": _fraction(m.stray_edges, m.plans),
+        "off_grid_edges_per_plan": _fraction(m.off_grid_edges, m.plans),
+        "ledger_ok_share": _fraction(m.ledger_ok_count, m.ledger_ok_plans),
+        "label_mismatches_per_plan": _fraction(m.label_mismatches, m.plans),
         "winners": dict(m.winners),
         "time_ms": _mean(m.times) * 1000 if m.times else None,
     }
@@ -211,6 +251,16 @@ def _print_row(m: Metrics, width: int = 88) -> None:
         f"daylight {_pct(_mean(m.cross_ventilation))}   "
         f"uncovered {_pct(_mean(m.uncovered_fraction))}   "
         f"balcony-without {m.balcony_without_habitable}"
+    )
+    print(
+        f"    geometry {_fmt(_mean(m.geometry_scores), '6.1f')}   "
+        f"furniture shortfalls {m.furniture_shortfalls}/{m.furniture_rooms}"
+    )
+    print(
+        f"    accuracy: aspect {_fmt(_mean(m.aspect), '5.2f')}  "
+        f"stray {m.stray_edges}/{m.plans}  off-grid {m.off_grid_edges}/{m.plans}  "
+        f"ledger-ok {m.ledger_ok_count}/{m.ledger_ok_plans}  "
+        f"labels {m.label_mismatches}/{m.plans}"
     )
 
 

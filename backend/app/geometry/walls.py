@@ -74,6 +74,11 @@ class WallConfig:
     edge_tolerance: float = 0.1
     #: Shared wall run below which a doorway is not worth cutting.
     min_opening: float = 2.5
+    #: Shared wall run that lets a door sit clear of both corners: a 3 ft leaf
+    #: plus ``2 x door_corner_clearance``. Access edges at or above this can
+    #: always host a corner-clear door, so the door pass never has to fall back
+    #: to a door that crowds a jamb.
+    door_clear_run: float = 6.0
     #: External wall run below which a window is not worth cutting.
     window_min_run: float = 6.0
     #: Feet a door must stay away from the end of its wall run.

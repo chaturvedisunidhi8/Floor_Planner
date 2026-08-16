@@ -1,47 +1,59 @@
 """Weighted quality score for a solved plan, 0..100.
 
-The weights are the ones agreed in the re-engineering plan, rebalanced for the
-architectural-quality milestone. The axes that used to soak up weight without
-discriminating - ``connectivity`` scores 100 on every solver plan, ``area``
-bought little - give way to *measured* architecture: corridor quality, door
-placement, the wet zone, the private zone and wasted space. Only the components
-that can actually be measured count: if a component has no data it is dropped
-and the remaining weights are renormalised, so an early plan is never punished
-for a metric that belongs to a later milestone.
+The score is the blend agreed for the accuracy-and-precision milestone:
+
+    total = 0.7 x architecture + 0.3 x geometry
+
+The architectural half measures *designed* qualities - the corridor as a
+spine, doors clear of corners, the wet zone pulled to the bedrooms, the
+private zone off circulation. The geometry half (in
+:mod:`app.geometry.accuracy`) measures *exactness* - sized rooms hitting
+their areas and dimensions, edges on the grid and aligned, the area ledger
+reconciling, rendered labels round-tripping. Blending keeps a
+dimensionally sloppy plan from passing for beautiful while still letting a
+geometrically perfect but uninhabitable plan score badly.
+
+Only the components that can actually be measured count: if a component has
+no data it is dropped and the remaining weights are renormalised, so a plan
+is never punished for a metric that does not apply. Nothing in this module
+changes the search - the blend is applied to the same solved plans the
+solver already produces, so it can never make a brief infeasible.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.geometry.connectivity import stranded_indices
+from app.geometry.accuracy import GEOMETRY_WEIGHTS, geometry_score
 from app.geometry.models import Plan
 from app.geometry.quality import (
     CORRIDOR_MIN_WIDTH,
     HABITABLE,
     quality_metrics,
 )
-from app.geometry.units import MAX_ASPECT_RATIO
 from app.schemas.requirements import FloorPlanRequirements
 
-#: Per-component weights, summing to 100.
-#: ``connectivity`` carries a small weight now: the strict gate makes every
-#: accepted solver plan 100% walkable, so the axis no longer discriminates.
-#: The points it used to hold moved to measured architectural features.
-WEIGHTS: dict[str, int] = {
-    "area": 20,
-    "connectivity": 10,
-    "utilization": 8,
-    "circulation": 8,
-    "aspect": 8,
-    "lighting": 6,
-    "doors_windows": 5,
-    "wet_zone": 8,
-    "zone_privacy": 6,
-    "corridor_quality": 10,
-    "door_quality": 6,
+#: Per-component weights of the architectural half, summing to 100.
+#: The axes that used to soak up weight without discriminating - pure
+#: ``area``, ``connectivity``, ``utilization`` and ``aspect`` - moved to the
+#: geometry half, where they belong; their points went to measured
+#: architecture. ``connectivity`` is the geometry's job now: the strict gate
+#: makes every accepted solver plan 100% walkable, so it no longer
+#: discriminates architecturally.
+ARCHITECTURE_WEIGHTS: dict[str, int] = {
+    "circulation": 10,
+    "lighting": 10,
+    "doors_windows": 10,
+    "wet_zone": 15,
+    "zone_privacy": 12,
+    "corridor_quality": 18,
+    "door_quality": 15,
     "space_use": 5,
+    "furniture": 5,
 }
+
+#: Backwards-compatible name for the architectural weights.
+WEIGHTS: dict[str, int] = ARCHITECTURE_WEIGHTS
 
 #: Rooms that want daylight and therefore an external wall. Owned by
 #: :mod:`app.geometry.quality`.
@@ -50,69 +62,44 @@ _HABITABLE = HABITABLE
 #: Circulation rooms, as a fraction of built-up area.
 _CIRCULATION = {"passage", "foyer"}
 
+#: Weight of the geometry half in the blended total.
+_GEOMETRY_WEIGHT = 0.3
+
 
 @dataclass(frozen=True)
 class PlanScore:
-    """Component breakdown plus the weighted total."""
+    """Component breakdown plus the blended total.
+
+    ``components`` and ``architecture`` describe the architectural half;
+    ``geometry`` is the geometry-accuracy half from
+    :mod:`app.geometry.accuracy`. ``total`` is
+    ``round(0.7 * architecture + 0.3 * geometry, 1)``.
+    """
 
     components: dict[str, float]
+    architecture: float
+    geometry: float
     total: float
 
     def as_dict(self) -> dict[str, float]:
         return {k: round(v, 1) for k, v in self.components.items()}
 
 
-def _aspect_score(mean_aspect: float) -> float:
-    """Piecewise: <=2 full marks, 2.5 -> 60, 3.0 -> 20, >=3.6 -> 0."""
-    if mean_aspect <= 2.0:
-        return 100.0
-    if mean_aspect <= 2.5:
-        return 100.0 - (mean_aspect - 2.0) * 80.0
-    if mean_aspect <= 3.0:
-        return 60.0 - (mean_aspect - 2.5) * 80.0
-    if mean_aspect <= MAX_ASPECT_RATIO:
-        return 20.0 * (MAX_ASPECT_RATIO - mean_aspect) / (MAX_ASPECT_RATIO - 3.0)
-    return 0.0
+def _weighted(components: dict[str, float], weights: dict[str, int]) -> float:
+    """Weighted mean of the present components, renormalised over their weights."""
+    available = sum(weights[c] for c in components)
+    if available == 0:
+        return 0.0
+    return sum(components[c] * weights[c] for c in components) / available
 
 
-def _uncovered_score(fraction: float) -> float:
-    """Space use: <=10% leftover is fine, 25% -> 40, >=40% -> 0."""
-    if fraction <= 0.10:
-        return 100.0
-    if fraction <= 0.25:
-        return 100.0 - (fraction - 0.10) * 400.0
-    if fraction <= 0.40:
-        return 40.0 * (0.40 - fraction) / 0.15
-    return 0.0
-
-
-def score_plan(plan: Plan, requirements: FloorPlanRequirements) -> PlanScore:
-    """Score a feasible plan against the brief."""
+def _architecture_components(
+    plan: Plan, requirements: FloorPlanRequirements
+) -> dict[str, float]:
+    """Component scores (0..100) for the architectural axes with enough data."""
     rects = plan.to_rects()
     components: dict[str, float] = {}
     metrics = quality_metrics(plan)
-
-    # --- area: how close the sized rooms land on their requested size ---------
-    targets = requirements.room_targets
-    sized = [r for r in rects if r.type in targets]
-    if sized:
-        relative = [
-            abs(r.area - targets[r.type].area) / targets[r.type].area for r in sized
-        ]
-        components["area"] = max(0.0, 100.0 * (1.0 - sum(relative) / len(relative)))
-
-    # --- connectivity: fraction of indoor rooms reachable from circulation ----
-    indoor = [r for r in rects if not r.type.is_outdoor]
-    if indoor:
-        stranded = stranded_indices(plan)
-        components["connectivity"] = 100.0 * (1.0 - len(stranded) / len(indoor))
-
-    # --- utilization: how much of the plot the rooms cover --------------------
-    plot_area = plan.plot_width * plan.plot_length
-    if plot_area > 0:
-        components["utilization"] = min(
-            100.0, 100.0 * sum(r.area for r in rects) / plot_area
-        )
 
     # --- circulation: the corridor band [5%, 20%] of built-up area ------------
     built_up = plan.built_up_sqft
@@ -126,13 +113,8 @@ def score_plan(plan: Plan, requirements: FloorPlanRequirements) -> PlanScore:
                 0.0, 100.0 * (1.0 - abs(share - 0.125) / 0.30)
             )
 
-    # --- aspect: how corridor-like the habitable rooms have become ------------
-    habitable = [r for r in rects if r.type in _HABITABLE]
-    if habitable:
-        mean_aspect = sum(min(r.aspect, 6.0) for r in habitable) / len(habitable)
-        components["aspect"] = _aspect_score(mean_aspect)
-
     # --- lighting: external wall + cross-ventilation (two external walls) -----
+    habitable = [r for r in rects if r.type in _HABITABLE]
     if habitable:
         lit = sum(
             r.x <= 0.1
@@ -146,10 +128,10 @@ def score_plan(plan: Plan, requirements: FloorPlanRequirements) -> PlanScore:
             0.7 * lit / len(habitable) + 0.3 * cross / len(habitable)
         )
 
-    # --- doors & windows: walkability plus window coverage and placement ------
-    walkable = 1.0 - len(stranded_indices(plan)) / len(indoor) if indoor else 1.0
-    # Only habitable rooms that actually reach an external wall can take a
-    # window, so an interior kitchen is not punished for having none.
+    # --- doors & windows: window coverage and window placement ---------------
+    # Walkability is guaranteed by the strict gate, so this axis concentrates
+    # on the windows: every habitable room that reaches an external wall
+    # should get one, and no window should crowd a corner or a door.
     glazable = [
         r
         for r in plan.rooms
@@ -163,7 +145,7 @@ def score_plan(plan: Plan, requirements: FloorPlanRequirements) -> PlanScore:
     ]
     if glazable:
         glazed = sum(any(w.room == r.type for w in plan.windows) for r in glazable)
-        base = 100.0 * (0.5 * walkable + 0.5 * glazed / len(glazable))
+        base = 100.0 * glazed / len(glazable)
         window_violations = metrics.window_corner_violations + metrics.window_door_violations
         components["doors_windows"] = max(
             0.0, base - 20.0 * window_violations / max(1, len(plan.windows))
@@ -220,17 +202,34 @@ def score_plan(plan: Plan, requirements: FloorPlanRequirements) -> PlanScore:
             0.0, 100.0 - 50.0 * violations / metrics.door_count
         )
 
-    # --- space_use: leftover plot and balconies that serve no habitable room --
+    # --- space_use: balconies that serve no habitable room --------------------
+    # The leftover-plot half of the old axis now lives in the geometry score's
+    # ``unused`` component, so this is purely the balcony penalty.
     penalty = 20.0 if metrics.balcony_without_habitable > 0 else 0.0
-    components["space_use"] = max(
-        0.0, _uncovered_score(metrics.uncovered_fraction) - penalty
-    )
+    components["space_use"] = max(0.0, 100.0 - penalty)
 
-    available_weight = sum(WEIGHTS[c] for c in components)
-    if available_weight == 0:
-        return PlanScore(components=components, total=0.0)
+    # --- furniture: rooms whose clear space cannot host their furniture --------
+    if metrics.furniture_rooms > 0:
+        components["furniture"] = 100.0 * (
+            1.0 - metrics.furniture_shortfalls / metrics.furniture_rooms
+        )
 
-    total = (
-        sum(components[c] * WEIGHTS[c] for c in components) / available_weight
+    return components
+
+
+def score_plan(plan: Plan, requirements: FloorPlanRequirements) -> PlanScore:
+    """Score a feasible plan against the brief.
+
+    Returns the architectural components, the two half-scores and the blended
+    ``total = round(0.7 * architecture + 0.3 * geometry, 1)``.
+    """
+    architecture = _architecture_components(plan, requirements)
+    arch_total = _weighted(architecture, ARCHITECTURE_WEIGHTS)
+    geometry = geometry_score(plan, requirements)
+    geo_total = _weighted(geometry, GEOMETRY_WEIGHTS)
+    return PlanScore(
+        components=architecture,
+        architecture=round(arch_total, 1),
+        geometry=round(geo_total, 1),
+        total=round((1.0 - _GEOMETRY_WEIGHT) * arch_total + _GEOMETRY_WEIGHT * geo_total, 1),
     )
-    return PlanScore(components=components, total=round(total, 1))

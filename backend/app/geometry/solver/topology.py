@@ -36,8 +36,8 @@ from dataclasses import dataclass, field
 from app.geometry.connectivity import CIRCULATION_TYPES
 from app.geometry.models import Plan
 from app.geometry.primitives import Rect
-from app.geometry.quality import HABITABLE, external_edges, quality_metrics
-from app.geometry.units import max_area, min_area, min_side, natural_area
+from app.geometry.quality import FURNITURE, HABITABLE, external_edges, quality_metrics
+from app.geometry.units import max_area, min_area, min_side, natural_area, snap
 from app.geometry.walls import WALLS
 from app.schemas.enums import RoomType
 from app.schemas.requirements import FloorPlanRequirements
@@ -123,6 +123,11 @@ class RoomSpec:
     sized: bool = False
     target_long: float | None = None
     target_short: float | None = None
+    #: Soft steering target for the short side, in feet. The objective nudges
+    #: the room's short side towards this (it is never a hard constraint), so
+    #: rooms land at their natural long/short proportions instead of anything
+    #: that merely hits the area. ``None`` for rooms with no natural shape.
+    natural_short: float | None = None
 
 
 @dataclass(frozen=True)
@@ -233,7 +238,25 @@ def _spec_for(room_type: RoomType, targets: dict[RoomType, object]) -> RoomSpec:
         sized=sized,
         target_long=target.long_side if sized else None,
         target_short=target.short_side if sized else None,
+        natural_short=_natural_short(room_type, target if sized else None),
     )
+
+
+def _natural_short(room_type: RoomType, target: object | None) -> float | None:
+    """The short side a room of this type should ideally reach.
+
+    A brief-sized room keeps its requested short side; otherwise the furniture
+    table's proportions (``FURNITURE``) define the natural shape; rooms with no
+    furniture footprint (corridors, outdoor spaces) get no steering at all.
+    """
+    if target is not None:
+        short = target.short_side
+        if short is not None:
+            return snap(short)
+    furniture = FURNITURE.get(room_type)
+    if furniture is None:
+        return None
+    return snap(min(furniture[0], furniture[1]))
 
 
 def _retype_bedrooms(

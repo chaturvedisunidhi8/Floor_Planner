@@ -61,6 +61,27 @@ _BALCONY_SERVED: frozenset[RoomType] = frozenset(
     {RoomType.LIVING_ROOM, RoomType.MASTER_BEDROOM}
 )
 
+#: Minimum clear (width, height) a room of each type needs to host its
+#: standard furniture, in feet. Orientation-agnostic: the room fits when its
+#: two clear sides cover the requirement in either order. Bathrooms expect a
+#: WC, basin and shower; bedrooms a double bed, side tables and a wardrobe.
+FURNITURE: dict[RoomType, tuple[float, float]] = {
+    RoomType.MASTER_BEDROOM: (9.0, 8.5),
+    RoomType.GUEST_BEDROOM: (9.0, 8.5),
+    RoomType.CHILDREN_BEDROOM: (9.0, 8.5),
+    RoomType.BEDROOM: (9.0, 8.5),
+    RoomType.LIVING_ROOM: (8.5, 10.0),
+    RoomType.DINING_ROOM: (8.5, 9.5),
+    RoomType.KITCHEN: (6.0, 8.0),
+    RoomType.ATTACHED_BATHROOM: (4.5, 5.5),
+    RoomType.COMMON_BATHROOM: (4.5, 5.5),
+    RoomType.POOJA_ROOM: (5.0, 5.0),
+    RoomType.STUDY_ROOM: (6.0, 8.0),
+    RoomType.UTILITY_ROOM: (5.0, 7.0),
+    RoomType.STORE_ROOM: (4.0, 5.0),
+    RoomType.WASH_AREA: (4.0, 6.0),
+}
+
 # --- design rules, in feet -------------------------------------------------
 
 #: Feet a door must stay away from the end of its wall run.
@@ -125,6 +146,9 @@ class QualityMetrics:
     # --- space ------------------------------------------------------------
     uncovered_fraction: float
     balcony_without_habitable: int
+    # --- furniture --------------------------------------------------------
+    furniture_rooms: int
+    furniture_shortfalls: int
 
 
 def quality_metrics(plan: Plan) -> QualityMetrics:
@@ -182,6 +206,8 @@ def quality_metrics(plan: Plan) -> QualityMetrics:
             not any(_runs(b, h, SERVE_RUN) for h in rooms if h.type in _BALCONY_SERVED)
             for b in balconies
         ),
+        furniture_rooms=sum(r.type in FURNITURE for r in rooms),
+        furniture_shortfalls=_furniture_shortfalls(plan),
     )
 
 
@@ -205,6 +231,7 @@ def _normalize(plan: Plan) -> Plan:
     normalized.walls = plan.walls
     normalized.status = plan.status
     normalized.quality_score = plan.quality_score
+    normalized.geometry_score = plan.geometry_score
     return normalized
 
 
@@ -496,11 +523,43 @@ def _uncovered_fraction(plan: Plan) -> float:
     return round(max(0.0, 1.0 - covered / plot_area), 3)
 
 
+# --- furniture ---------------------------------------------------------------
+
+def _clear_dims(plan: Plan, index: int, room: Room) -> tuple[float, float]:
+    """The room's usable (clear) width and height, from the wall model.
+
+    Falls back to the gross rectangle when no wall model was built, which is
+    the right call for the legacy pipeline: it measures the room you get, and
+    wall thickness is lost either way.
+    """
+    if plan.walls is not None:
+        clear = plan.walls.clear_polygons.get(index)
+        if clear is not None and not clear.is_empty:
+            minx, miny, maxx, maxy = clear.bounds
+            return max(0.0, maxx - minx), max(0.0, maxy - miny)
+    return room.width, room.height
+
+
+def _furniture_shortfalls(plan: Plan) -> int:
+    """Rooms whose clear space cannot host their standard furniture."""
+    shortfalls = 0
+    for index, room in enumerate(plan.rooms):
+        requirement = FURNITURE.get(room.type)
+        if requirement is None:
+            continue
+        min_req, max_req = min(requirement), max(requirement)
+        w, h = _clear_dims(plan, index, room)
+        if min(w, h) < min_req or max(w, h) < max_req:
+            shortfalls += 1
+    return shortfalls
+
+
 __all__ = [
     "BATHROOM_MIN_SIDE",
     "CORRIDOR_MIN_WIDTH",
     "DOOR_CORNER_CLEARANCE",
     "DOOR_SPACING",
+    "FURNITURE",
     "HABITABLE",
     "OPPOSING_CORRIDOR_WIDTH",
     "SOCIAL",

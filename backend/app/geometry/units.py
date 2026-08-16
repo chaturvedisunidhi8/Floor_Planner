@@ -39,15 +39,15 @@ GRID = UNIT
 
 #: Minimum sensible short side, by room family.
 MIN_SIDE: dict[RoomType, float] = {
-    RoomType.ATTACHED_BATHROOM: 4.0,
-    RoomType.COMMON_BATHROOM: 4.0,
+    RoomType.ATTACHED_BATHROOM: 4.5,
+    RoomType.COMMON_BATHROOM: 4.5,
     RoomType.POOJA_ROOM: 3.5,
     RoomType.STORE_ROOM: 3.5,
     RoomType.UTILITY_ROOM: 3.5,
     RoomType.WASH_AREA: 3.5,
     RoomType.BALCONY: 3.5,
-    RoomType.PASSAGE: 3.0,
-    RoomType.FOYER: 4.0,
+    RoomType.PASSAGE: 4.5,
+    RoomType.FOYER: 4.5,
     RoomType.STAIRCASE: 4.0,
     RoomType.KITCHEN: 6.5,
     RoomType.DINING_ROOM: 7.0,

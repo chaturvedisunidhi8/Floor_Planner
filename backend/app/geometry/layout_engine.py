@@ -69,7 +69,7 @@ from app.geometry.vastu import ZONE_TARGETS as VASTU_ZONE_TARGETS
 from app.geometry.vastu import VastuReport
 from app.geometry.vastu import comply as comply_with_vastu
 from app.geometry.vastu import zone_score as vastu_zone_score
-from app.geometry.walls import WallModel, build_wall_model
+from app.geometry.walls import WALLS, WallModel, build_wall_model
 from app.geometry.windows import model_windows
 from app.schemas.enums import RoomType
 from app.schemas.requirements import FloorPlanRequirements
@@ -144,6 +144,9 @@ class LayoutPlan:
     #: 0..100 quality score from :mod:`app.geometry.scoring`. ``None`` for the
     #: legacy engine, which has no scoring pass.
     quality_score: float | None = None
+    #: 0..100 geometry-accuracy score from :mod:`app.geometry.accuracy`.
+    #: ``None`` for the legacy engine, which has no scoring pass.
+    geometry_score: float | None = None
     #: Modeled doorways between rooms (Milestone B). Empty for the legacy engine,
     #: whose renderer infers openings from adjacency at draw time.
     doors: list[Door] = field(default_factory=list)
@@ -292,6 +295,7 @@ class LayoutEngine:
         *,
         time_limit: float | None = None,
         topology_candidates: int | None = None,
+        access_run_ft: float | None = None,
     ) -> LayoutPlan:
         """CP-SAT path: refuse infeasible briefs instead of shrinking them.
 
@@ -363,6 +367,7 @@ class LayoutEngine:
                 time_limit=budget,
                 access_requirements=candidate.access_requirements,
                 spatial_bias=candidate.spatial_bias,
+                access_run_ft=access_run_ft or WALLS.door_clear_run,
             )
             entry: dict = {"label": candidate.label, "status": outcome.status}
             if outcome.status != cp_sat.FEASIBLE:
@@ -412,7 +417,9 @@ class LayoutEngine:
                     base_report = report
                 search_log.append(entry)
                 return
-            plan.quality_score = score_plan(plan, self._req).total
+            scores = score_plan(plan, self._req)
+            plan.quality_score = scores.total
+            plan.geometry_score = scores.geometry
             entry["score"] = plan.quality_score
             entry["is_optimal"] = outcome.is_optimal
             if candidate is base:
@@ -672,6 +679,7 @@ class LayoutEngine:
             status="feasible",
             infeasibility=None,
             quality_score=plan.quality_score,
+            geometry_score=plan.geometry_score,
             doors=plan.doors,
             windows=plan.windows,
             walls=plan.walls,

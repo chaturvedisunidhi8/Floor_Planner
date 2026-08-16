@@ -152,6 +152,9 @@ class Plan:
     status: str = "feasible"
     #: 0..100 when feasible; ``None`` otherwise.
     quality_score: float | None = None
+    #: 0..100 geometry accuracy (see :mod:`app.geometry.accuracy`); ``None``
+    #: when the plan was not scored or is not feasible.
+    geometry_score: float | None = None
     #: Diagnostics dict; populated only when ``status != "feasible"``.
     infeasibility: dict | None = None
 

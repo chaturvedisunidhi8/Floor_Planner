@@ -102,6 +102,10 @@ class GeneratedLayout(BaseModel):
     #: 0..100 quality score from the geometry engine's scoring pass, when the
     #: engine produces one. ``None`` for the legacy engine.
     quality_score: float | None = Field(default=None, ge=0.0, le=100.0)
+    #: 0..100 geometry-accuracy score (area/dimension/aspect/alignment/grid/
+    #: ledger/rendered/unused) from the geometry engine, when it produces one.
+    #: ``None`` for the legacy engine.
+    geometry_accuracy: float | None = Field(default=None, ge=0.0, le=100.0)
     #: Why the brief is infeasible and what would make it work. Populated only
     #: when ``status == "infeasible"``.
     infeasibility: dict | None = None

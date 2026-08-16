@@ -106,7 +106,7 @@ class Settings(BaseSettings):
     #: returning the best-scoring one. ``1`` reproduces the pre-search
     #: behaviour exactly. Each candidate gets its own full time budget, so the
     #: wall-clock cost of a generation scales with this number.
-    topology_candidates: int = Field(default=5, ge=1, le=12)
+    topology_candidates: int = Field(default=3, ge=1, le=12)
     #: Soft spatial-zoning variants (bedrooms vs social core on opposite sides
     #: of the plot). The main diversity driver.
     topology_zoning: bool = True
