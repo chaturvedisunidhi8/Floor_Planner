@@ -19,6 +19,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 from app.core.logging import get_logger
+from app.geometry.labels import feet_inches as _feet_inches
 from app.geometry.layout_engine import LayoutPlan
 from app.geometry.primitives import Rect
 from app.schemas.enums import InteriorStyle, RoomType
@@ -143,14 +144,6 @@ ROOM_GROUP: dict[RoomType, str] = {
     RoomType.PASSAGE: "circulation",
     RoomType.FOYER: "circulation",
 }
-
-
-def _feet_inches(value: float) -> str:
-    feet = int(value)
-    inches = int(round((value - feet) * 12))
-    if inches == 12:
-        feet, inches = feet + 1, 0
-    return f"{feet}'{inches}\"" if inches else f"{feet}'"
 
 
 def _dimension_metrics(ppf: float) -> tuple[float, float, int]:

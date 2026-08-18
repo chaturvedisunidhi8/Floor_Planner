@@ -1,0 +1,101 @@
+{
+  "per_brief": {
+    "1BHK narrow 20x30": {
+      "area_err_mean": 0.0,
+      "base_score_avg": 84.21,
+      "best_score_avg": 86.85,
+      "candidates_attempted": 60,
+      "connectivity": 1.0,
+      "dim_err": 0.0,
+      "feasibility": 1.0,
+      "overlap_rate": 0.0,
+      "plans": 20,
+      "pruned": 0,
+      "pruned_share": 0.0,
+      "time_ms": 1265.7209300000432,
+      "unique_layouts": 19,
+      "unique_topologies": 5,
+      "winner_labels": {
+        "Base": 5,
+        "Bedrooms left / social right": 2,
+        "Daylight on the envelope": 6,
+        "Spine corridor": 3,
+        "Wet rooms near bedrooms": 4
+      }
+    },
+    "3BHK standard 30x45": {
+      "area_err_mean": 0.004340277777777778,
+      "base_score_avg": 79.845,
+      "best_score_avg": 82.475,
+      "candidates_attempted": 60,
+      "connectivity": 1.0,
+      "dim_err": 0.0021614583333333334,
+      "feasibility": 1.0,
+      "overlap_rate": 0.0,
+      "plans": 20,
+      "pruned": 0,
+      "pruned_share": 0.0,
+      "time_ms": 2958.2442649998484,
+      "unique_layouts": 20,
+      "unique_topologies": 4,
+      "winner_labels": {
+        "Base": 4,
+        "Daylight on the envelope": 9,
+        "Spine corridor": 1,
+        "Wet rooms near bedrooms": 6
+      }
+    },
+    "4BHK deep 30x65": {
+      "area_err_mean": 0.022410192147034252,
+      "base_score_avg": 74.16666666666667,
+      "best_score_avg": 76.81052631578947,
+      "candidates_attempted": 60,
+      "connectivity": 1.0,
+      "dim_err": 0.010944026733500417,
+      "feasibility": 0.95,
+      "overlap_rate": 0.0,
+      "plans": 20,
+      "pruned": 0,
+      "pruned_share": 0.0,
+      "time_ms": 3216.6544049998265,
+      "unique_layouts": 19,
+      "unique_topologies": 6,
+      "winner_labels": {
+        "Base": 5,
+        "Bedrooms left / social right": 2,
+        "Bedrooms right / social left": 2,
+        "Daylight on the envelope": 6,
+        "Wet rooms near bedrooms": 4
+      }
+    }
+  },
+  "settings": {
+    "candidates": 3,
+    "solver_budget": 1.0,
+    "variants": 1
+  },
+  "total": {
+    "area_err_mean": 0.008688122141511972,
+    "base_score_avg": 79.88363636363637,
+    "best_score_avg": 82.13389830508474,
+    "candidates_attempted": 180,
+    "connectivity": 1.0,
+    "dim_err": 0.004257045332257197,
+    "feasibility": 0.9833333333333333,
+    "overlap_rate": 0.0,
+    "plans": 60,
+    "pruned": 0,
+    "pruned_share": 0.0,
+    "time_ms": 2480.2065333332393,
+    "unique_layouts": 58,
+    "unique_topologies": 6,
+    "winner_labels": {
+      "Base": 14,
+      "Bedrooms left / social right": 4,
+      "Bedrooms right / social left": 2,
+      "Daylight on the envelope": 21,
+      "Spine corridor": 4,
+      "Wet rooms near bedrooms": 14
+    }
+  }
+}

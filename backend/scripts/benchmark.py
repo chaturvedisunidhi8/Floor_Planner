@@ -258,6 +258,8 @@ class BriefMetrics:
     forbidden_violations: int = 0
     #: Architectural scores of feasible solver plans (quality_score).
     scores: list[float] = field(default_factory=list)
+    #: Geometry-accuracy scores of feasible solver plans (geometry_score).
+    geometry_scores: list[float] = field(default_factory=list)
     #: Distinct final geometries, as ``(type, x, y, w, h)`` signatures.
     layout_signatures: set[str] = field(default_factory=set)
 
@@ -466,6 +468,8 @@ def run_brief(
                 metrics.door_connected_fraction.append(door_connected)
                 if plan.quality_score is not None:
                     metrics.scores.append(plan.quality_score)
+                if plan.geometry_score is not None:
+                    metrics.geometry_scores.append(plan.geometry_score)
                 signature = "|".join(
                     f"{r.type}:{r.x:.1f},{r.y:.1f},{r.width:.1f},{r.height:.1f}"
                     for r in plan.rooms
@@ -502,6 +506,9 @@ def _summary(metrics: BriefMetrics) -> dict:
         "door_satisfied": mean(metrics.door_satisfied) if metrics.door_satisfied else None,
         "forbidden_violations": metrics.forbidden_violations,
         "score_avg": mean(metrics.scores) if metrics.scores else None,
+        "geometry_score_avg": (
+            mean(metrics.geometry_scores) if metrics.geometry_scores else None
+        ),
         "unique_layouts": len(metrics.layout_signatures),
     }
 
@@ -527,7 +534,11 @@ def _print_row(label: str, metrics: BriefMetrics, width: int = 82) -> None:
         f"time {t*1000:6.0f} ms   ({metrics.plans} plans)"
     )
     if metrics.scores:
-        print(f"    score avg {score:6.1f}   unique layouts {len(metrics.layout_signatures)}")
+        geo = mean(metrics.geometry_scores) if metrics.geometry_scores else float("nan")
+        print(
+            f"    score avg {score:6.1f}   geometry {geo:6.1f}   "
+            f"unique layouts {len(metrics.layout_signatures)}"
+        )
     if metrics.access_satisfied:
         door_conn = mean(metrics.door_connected_fraction) if metrics.door_connected_fraction else float("nan")  # noqa: E501
         door_ok = mean(metrics.door_satisfied) if metrics.door_satisfied else float("nan")

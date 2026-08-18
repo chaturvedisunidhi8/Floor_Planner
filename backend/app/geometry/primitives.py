@@ -36,6 +36,21 @@ from app.schemas.enums import RoomType
 # import GRID, ...`` keep working while the solver reads from the single home.
 
 
+def clear_of_corners(lo: float, hi: float, width: float, clearance: float) -> float:
+    """Start coordinate for an opening of ``width``, clear of both corners.
+
+    The centred start is kept when it already clears the corners; otherwise the
+    opening is slid to sit between ``lo + clearance`` and ``hi - clearance``.
+    A run too short to hold the two clearances falls back to the centred start
+    (best effort, never worse than a plain centred opening).
+    """
+    mid = (lo + hi) / 2
+    start = mid - width / 2
+    if hi - lo - width < 2 * clearance:
+        return start
+    return min(max(start, lo + clearance), hi - clearance - width)
+
+
 @dataclass
 class Rect:
     """A placed room."""

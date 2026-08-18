@@ -26,6 +26,7 @@ yields the same plan - the same reproducibility contract as the legacy engine.
 
 from __future__ import annotations
 
+import itertools
 import math
 import time
 from collections.abc import Sequence
@@ -36,16 +37,38 @@ from ortools.sat.python import cp_model
 from app.geometry.envelope import Envelope
 from app.geometry.models import Plan, Room
 from app.geometry.solver.topology import (
-    MIN_OPENING,
     AccessRequirement,
     RoomSpec,
     SpatialBias,
 )
 from app.geometry.units import area_to_cells, to_cells, to_ft
 from app.geometry.validation import validate_plan
+from app.geometry.walls import WALLS
 
 #: Default wall-clock budget for one solve, in seconds.
 DEFAULT_TIME_LIMIT = 3.0
+
+#: Objective allowance per corner-clear access edge, in cells^2. Small enough
+#: not to dominate the area-accuracy terms (tens of square feet across all
+#: edges) but large enough to steer the solver towards layouts whose doors are
+#: clear of wall corners.
+_CORNER_CLEAR_WEIGHT = 80
+
+#: Objective cost per cell the natural-short steering falls short, in cells^2
+#: per cell. One half-foot of shortfall costs 30 cells^2 (about 7.5 sq ft of
+#: area-deviation-equivalent), enough to prefer natural proportions when the
+#: area is met but small next to a brief's sized-area terms.
+_ASPECT_STEER_WEIGHT = 30
+
+#: Fraction of the plot a plan may leave uncovered before it is charged, and
+#: the objective weight on each cell^2 beyond that. Tuned empirically on the
+#: big-plot briefs (4BHK): weight 2 beats 1 and 3 on the blended geometry
+#: score. It equals the sized-area deviation weight, so brief-sized rooms are
+#: neutral between meeting their exact area and absorbing spare land, while
+#: generic rooms (weight 1) actively absorb it; coverage gains outweigh the
+#: small area-accuracy cost on big plots.
+_UNCOVERED_ALLOWANCE = 0.15
+_UNCOVERED_WEIGHT = 2
 
 #: Statuses the model can end in.
 FEASIBLE = "feasible"
@@ -67,6 +90,11 @@ class SolverOutcome:
     #: it. A solver/extraction bug, never repaired - the outcome comes back
     #: ``infeasible`` so no caller can return the invalid geometry.
     validation_failed: bool = False
+    #: True when the solve reached ``OPTIMAL`` and so ended deterministically.
+    #: A ``FEASIBLE`` verdict means the wall-clock budget cut the search off
+    #: mid-flight - the incumbent (and therefore the plan) can differ between
+    #: runs even with a fixed seed, because the stop point is wall-clock based.
+    is_optimal: bool = False
 
 
 def _cell_bounds(spec: RoomSpec, extent: int, *, shape: bool) -> tuple[int, int]:
@@ -185,9 +213,10 @@ def _add_access_graph(
     ends_x: list[cp_model.IntVar],
     ends_y: list[cp_model.IntVar],
     access_requirements: Sequence[AccessRequirement],
-    min_opening: float,
-) -> None:
-    """Turn the intended access graph into hard geometry constraints.
+    run_ft: float,
+    hard_run_ft: float,
+) -> list[cp_model.IntVar]:
+    """Turn the intended access graph into geometry constraints.
 
     For every unordered pair that appears in the access graph this adds the
     four separation booleans (i left of j / j left of i / i below j / j below
@@ -195,10 +224,23 @@ def _add_access_graph(
     which separation the solver chose - they are consistent with it, never a
     second authority.
 
-    Each requirement then forces its room to be adjacent (shared run at least
-    ``min_opening`` long on the perpendicular axis) to at least one candidate.
-    That is exactly the condition for a real door to be cut between them, so a
-    feasible model is one where every access edge has a place for its door.
+    **Hard tier (feasibility).** Each requirement forces its room to share a
+    real wall - run at least ``hard_run_ft`` on the perpendicular axis - with
+    at least one candidate. Connectivity is therefore a solver constraint, not
+    a repair pass. The "self" terms (each room at least ``hard_run_ft`` tall on
+    the perpendicular axis) keep the run a genuine property of *both* rooms: a
+    10ft-tall room may not count a 6ft run against a 4ft-tall room whose real
+    shared wall is only 4ft long. ``hard_run_ft`` is normally
+    :data:`WALLS.door_clear_run`; :func:`solve` retries at
+    :data:`WALLS.min_opening` for briefs too tight to reach it.
+
+    **Soft tier (quality).** Returns one boolean per access edge that is true
+    exactly when the chosen edge's run also reaches ``run_ft`` - the
+    *corner-clear* run (see :data:`WALLS.door_clear_run`) on which the door
+    pass can always place a door clear of both wall corners. The objective
+    rewards these booleans, so the solver pushes every edge towards a
+    corner-clear run wherever the layout allows, without ever making a tight
+    brief infeasible.
     """
     pairs: set[tuple[int, int]] = set()
     for req in access_requirements:
@@ -219,9 +261,12 @@ def _add_access_graph(
         model.Add(ends_y[j] <= starts_y[i]).OnlyEnforceIf(above)
         directions[(i, j)] = (left, right, below, above)
 
-    overlap = to_cells(min_opening)
+    overlap_min = to_cells(hard_run_ft)
+    overlap_clear = to_cells(run_ft)
 
-    def require_adjacent(u: int, v: int, gate: object | None) -> None:
+    def require_adjacent(
+        u: int, v: int, gate: object | None, overlap: int
+    ) -> None:
         """``u`` and ``v`` share a wall whose run is at least ``overlap``.
 
         ``gate`` (an any-of adjacency boolean) further conditions the rule, so
@@ -241,27 +286,44 @@ def _add_access_graph(
         for var in (u_left, v_left):
             model.Add(starts_y[u] <= ends_y[v] - overlap).OnlyEnforceIf([*guard, var])
             model.Add(starts_y[v] <= ends_y[u] - overlap).OnlyEnforceIf([*guard, var])
+            model.Add(starts_y[u] <= ends_y[u] - overlap).OnlyEnforceIf([*guard, var])
+            model.Add(starts_y[v] <= ends_y[v] - overlap).OnlyEnforceIf([*guard, var])
         model.Add(ends_y[u] == starts_y[v]).OnlyEnforceIf([*guard, u_below])
         model.Add(ends_y[v] == starts_y[u]).OnlyEnforceIf([*guard, v_below])
         for var in (u_below, v_below):
             model.Add(starts_x[u] <= ends_x[v] - overlap).OnlyEnforceIf([*guard, var])
             model.Add(starts_x[v] <= ends_x[u] - overlap).OnlyEnforceIf([*guard, var])
+            model.Add(starts_x[u] <= ends_x[u] - overlap).OnlyEnforceIf([*guard, var])
+            model.Add(starts_x[v] <= ends_x[v] - overlap).OnlyEnforceIf([*guard, var])
 
+    corner_clear: list[cp_model.IntVar] = []
     for req in access_requirements:
-        if not req.candidates:
+        candidates = [c for c in req.candidates if c != req.room]
+        if not candidates:
             continue
-        if len(req.candidates) == 1:
-            require_adjacent(req.room, req.candidates[0], gate=None)
+        if len(candidates) == 1:
+            candidate = candidates[0]
+            require_adjacent(req.room, candidate, gate=None, overlap=overlap_min)
+            corner_clear_var = model.NewBoolVar(f"cc_{req.room}_{candidate}")
+            require_adjacent(
+                req.room, candidate, gate=corner_clear_var, overlap=overlap_clear
+            )
+            corner_clear.append(corner_clear_var)
             continue
         gates: list[cp_model.IntVar] = []
-        for candidate in req.candidates:
-            if candidate == req.room:
-                continue
+        for candidate in candidates:
             gate = model.NewBoolVar(f"acc_{req.room}_{candidate}")
+            require_adjacent(req.room, candidate, gate=gate, overlap=overlap_min)
+            corner_clear_var = model.NewBoolVar(f"cc_{req.room}_{candidate}")
+            model.Add(corner_clear_var <= gate)
+            require_adjacent(
+                req.room, candidate, gate=corner_clear_var, overlap=overlap_clear
+            )
             gates.append(gate)
-            require_adjacent(req.room, candidate, gate=gate)
+            corner_clear.append(corner_clear_var)
         if gates:
             model.Add(sum(gates) >= 1)
+    return corner_clear
 
 
 def _direction_vars(
@@ -301,6 +363,16 @@ def _add_spatial_bias(
     but is never forced into it - which is why a biased candidate can never turn
     a feasible brief infeasible. This is the topology-search lever that makes a
     zoning variant genuinely different from the base packing.
+
+    ``align_x``/``align_y`` reward the named rooms sharing one band: for every
+    pair, a boolean worth ``-bias.weight`` is set only when their intervals on
+    the shared axis overlap, i.e. they sit side by side on the same spine. A
+    corridor candidate leans on this to ask for one continuous run instead of
+    scattered strips. ``touch_edge`` rewards each named room with a boolean for
+    touching any plot boundary, which is the geometry behind an external wall
+    and, at a corner, cross-ventilation. All three are soft pressure in the
+    objective only - never a hard constraint - so no bias can make a feasible
+    brief infeasible.
     """
     for index in bias.left:
         var = model.NewBoolVar(f"sb_l_{index}")
@@ -318,6 +390,30 @@ def _add_spatial_bias(
         var = model.NewBoolVar(f"sb_t_{index}")
         model.Add(2 * starts_y[index] + heights[index] >= H).OnlyEnforceIf(var)
         terms.append(-bias.weight * var)
+    for axis, group in (("x", bias.align_x), ("y", bias.align_y)):
+        for a, b in itertools.combinations(group, 2):
+            var = model.NewBoolVar(f"sb_a{axis}_{a}_{b}")
+            if axis == "x":
+                model.Add(starts_x[a] + widths[a] >= starts_x[b] + 1).OnlyEnforceIf(var)
+                model.Add(starts_x[b] + widths[b] >= starts_x[a] + 1).OnlyEnforceIf(var)
+            else:
+                model.Add(starts_y[a] + heights[a] >= starts_y[b] + 1).OnlyEnforceIf(var)
+                model.Add(starts_y[b] + heights[b] >= starts_y[a] + 1).OnlyEnforceIf(var)
+            terms.append(-bias.weight * var)
+    for index in bias.touch_edge:
+        var = model.NewBoolVar(f"sb_e_{index}")
+        on_edge = []
+        for side, expr in (
+            ("l", starts_x[index] == 0),
+            ("r", starts_x[index] + widths[index] == W),
+            ("b", starts_y[index] == 0),
+            ("t", starts_y[index] + heights[index] == H),
+        ):
+            side_var = model.NewBoolVar(f"sb_e{side}_{index}")
+            model.Add(expr).OnlyEnforceIf(side_var)
+            on_edge.append(side_var)
+        model.Add(sum(on_edge) >= 1).OnlyEnforceIf(var)
+        terms.append(-bias.weight * var)
 
 
 def _add_objective(
@@ -332,6 +428,7 @@ def _add_objective(
     H: int,
     *,
     spatial_bias: SpatialBias | None = None,
+    corner_clear: Sequence[cp_model.IntVar] = (),
 ) -> None:
     terms: list[object] = []
     for index, spec in enumerate(specs):
@@ -341,6 +438,21 @@ def _add_objective(
         # Rooms the brief sized weigh double: hitting their number matters more
         # than a generic room landing exactly on its default.
         terms.append((2 if spec.sized else 1) * deviation)
+        # Long/short steering: nudge the short side towards the room's natural
+        # shape. ``shortfall`` is max(0, natural_short - min(width, height)) -
+        # every cell the short side falls below its target costs a fixed
+        # allowance, so a room that hits its area as a ribbon (long and thin)
+        # loses out to one that hits the same area in natural proportions.
+        # Sized rooms are protected: their area term weighs 2, so the steering
+        # never overrules the brief's own dimensions.
+        natural_short = spec.natural_short
+        if natural_short is not None:
+            target_short_cells = to_cells(natural_short)
+            if target_short_cells < min(W, H):
+                shortfall = model.NewIntVar(0, max(W, H), f"short_{index}")
+                model.Add(shortfall >= target_short_cells - heights[index])
+                model.Add(shortfall >= target_short_cells - widths[index])
+                terms.append(_ASPECT_STEER_WEIGHT * shortfall)
 
     if spatial_bias is not None:
         _add_spatial_bias(
@@ -354,6 +466,22 @@ def _add_objective(
             H,
             terms,
         )
+    # Bounded coverage: only the uncovered area *beyond* the 15% allowance
+    # (the same line the geometry scorer draws) costs anything. The weight sits
+    # between the unsized (1) and sized (2) area-deviation weights, so generic
+    # rooms absorb the spare land but brief-sized rooms are never inflated just
+    # to fill a large plot.
+    uncovered = model.NewIntVar(0, W * H, "uncovered")
+    model.Add(uncovered == W * H - sum(areas))
+    excess = model.NewIntVar(0, W * H, "uncovered_excess")
+    allowance = int(_UNCOVERED_ALLOWANCE * W * H)
+    model.Add(excess >= uncovered - allowance)
+    terms.append(_UNCOVERED_WEIGHT * excess)
+    # Reward corner-clear access edges (see _add_access_graph): each one the
+    # solver can reach subtracts a fixed allowance, so the objective prefers
+    # layouts where the door pass can place doors clear of wall corners.
+    if corner_clear:
+        terms.append(_CORNER_CLEAR_WEIGHT * sum(corner_clear))
     model.Minimize(sum(terms))
 
 
@@ -389,6 +517,7 @@ def solve(
     validate: bool = True,
     access_requirements: Sequence[AccessRequirement] = (),
     spatial_bias: SpatialBias | None = None,
+    access_run_ft: float = WALLS.door_clear_run,
 ) -> SolverOutcome:
     """Pack ``specs`` into ``envelope``, returning a :class:`SolverOutcome`.
 
@@ -396,9 +525,14 @@ def solve(
     used by the infeasibility ladder in :mod:`app.geometry.solver.infeasibility`.
 
     ``access_requirements`` are the intended access graph (Milestone C): each
-    requirement forces a shared wall long enough for a door, so a feasible
-    outcome is walkable from the entrance. The infeasibility ladder passes none
-    - its probes isolate geometric feasibility from connectivity.
+    requirement forces a shared wall at least ``min_opening`` long, so a
+    feasible outcome is walkable from the entrance. The infeasibility ladder
+    passes none - its probes isolate geometric feasibility from connectivity.
+
+    ``access_run_ft`` is the *soft* target run for those edges
+    (:data:`WALLS.door_clear_run`): the objective rewards edges whose shared
+    run reaches it (so the door pass can place a corner-clear door), but a
+    tight brief may fall short without ever turning infeasible.
 
     ``validate`` runs the strict geometry gate on the extracted layout before a
     ``feasible`` outcome is returned. A CP-SAT ``FEASIBLE`` verdict alone is
@@ -419,85 +553,116 @@ def solve(
         return SolverOutcome(INFEASIBLE, [], time.perf_counter() - started, budget, reason=reason)
 
     W, H = envelope.cells
-    model = cp_model.CpModel()
-    starts_x, starts_y, widths, heights, areas = _build_model(
-        model, specs, W, H, shape=shape, edge=edge, strict_area=strict_area
-    )
-    if access_requirements:
-        # Bind the sums to affine end vars the way _build_model does, so the
-        # OnlyEnforceIf adjacency constraints operate on model variables.
-        ends_x = _end_vars(model, starts_x, widths, W, "xe")
-        ends_y = _end_vars(model, starts_y, heights, H, "ye")
-        _add_access_graph(
+
+    def attempt(hard_run_ft: float) -> SolverOutcome:
+        """Build and solve the model with ``hard_run_ft`` as the access run.
+
+        The hard tier *requires* every chosen access edge to reach this run; the
+        soft objective still rewards the corner-clear target (``access_run_ft``)
+        on top. The wall-clock budget is measured against the whole attempt, so
+        a ladder that falls back does not quietly steal time from the solve that
+        succeeds.
+        """
+        model = cp_model.CpModel()
+        starts_x, starts_y, widths, heights, areas = _build_model(
+            model, specs, W, H, shape=shape, edge=edge, strict_area=strict_area
+        )
+        corner_clear: list[cp_model.IntVar] = []
+        if access_requirements:
+            # Bind the sums to affine end vars the way _build_model does, so the
+            # OnlyEnforceIf adjacency constraints operate on model variables.
+            ends_x = _end_vars(model, starts_x, widths, W, "xe")
+            ends_y = _end_vars(model, starts_y, heights, H, "ye")
+            corner_clear = _add_access_graph(
+                model,
+                specs,
+                starts_x,
+                starts_y,
+                ends_x,
+                ends_y,
+                access_requirements,
+                access_run_ft,
+                hard_run_ft,
+            )
+        _add_objective(
             model,
             specs,
             starts_x,
             starts_y,
-            ends_x,
-            ends_y,
-            access_requirements,
-            MIN_OPENING,
+            widths,
+            heights,
+            areas,
+            W,
+            H,
+            spatial_bias=spatial_bias,
+            corner_clear=corner_clear,
         )
-    _add_objective(
-        model,
-        specs,
-        starts_x,
-        starts_y,
-        widths,
-        heights,
-        areas,
-        W,
-        H,
-        spatial_bias=spatial_bias,
-    )
 
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = budget
-    solver.parameters.random_seed = seed
-    solver.parameters.num_search_workers = 1
-    solver.parameters.log_search_progress = False
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = budget
+        solver.parameters.random_seed = seed
+        solver.parameters.num_search_workers = 1
+        solver.parameters.log_search_progress = False
 
-    result = solver.Solve(model)
-    elapsed = time.perf_counter() - started
+        result = solver.Solve(model)
+        elapsed = time.perf_counter() - started
 
-    if result == cp_model.INFEASIBLE:
-        return SolverOutcome(INFEASIBLE, [], elapsed, budget)
-    if result not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-        return SolverOutcome(TIMEOUT, [], elapsed, budget, reason="no solution found in time")
-
-    rooms = [
-        Room(
-            spec.type,
-            spec.name,
-            to_ft(int(solver.Value(starts_x[i]))),
-            to_ft(int(solver.Value(starts_y[i]))),
-            to_ft(int(solver.Value(widths[i]))),
-            to_ft(int(solver.Value(heights[i]))),
-        )
-        for i, spec in enumerate(specs)
-    ]
-
-    if validate:
-        plan = Plan(
-            rooms=rooms,
-            plot_width=envelope.buildable_width,
-            plot_length=envelope.buildable_length,
-        )
-        report = validate_plan(plan, envelope, specs)
-        if not report.ok:
+        if result == cp_model.INFEASIBLE:
+            return SolverOutcome(INFEASIBLE, [], elapsed, budget)
+        if result not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
             return SolverOutcome(
-                INFEASIBLE,
-                [],
-                elapsed,
-                budget,
-                reason="; ".join(report.errors[:4]),
-                validation_failed=True,
+                TIMEOUT, [], elapsed, budget, reason="no solution found in time"
             )
 
-    return SolverOutcome(
-        FEASIBLE,
-        rooms,
-        elapsed,
-        budget,
-        objective=float(solver.ObjectiveValue()),
-    )
+        rooms = [
+            Room(
+                spec.type,
+                spec.name,
+                to_ft(int(solver.Value(starts_x[i]))),
+                to_ft(int(solver.Value(starts_y[i]))),
+                to_ft(int(solver.Value(widths[i]))),
+                to_ft(int(solver.Value(heights[i]))),
+            )
+            for i, spec in enumerate(specs)
+        ]
+
+        if validate:
+            plan = Plan(
+                rooms=rooms,
+                plot_width=envelope.buildable_width,
+                plot_length=envelope.buildable_length,
+            )
+            report = validate_plan(plan, envelope, specs)
+            if not report.ok:
+                return SolverOutcome(
+                    INFEASIBLE,
+                    [],
+                    elapsed,
+                    budget,
+                    reason="; ".join(report.errors[:4]),
+                    validation_failed=True,
+                )
+
+        return SolverOutcome(
+            FEASIBLE,
+            rooms,
+            elapsed,
+            budget,
+            objective=float(solver.ObjectiveValue()),
+            is_optimal=(result == cp_model.OPTIMAL),
+        )
+
+    # The hard ladder: solve for the corner-clear access run first. Where the
+    # layout allows it every door ends up clear of its wall corners, which is
+    # what the door-quality metric counts. A tight brief that cannot reach that
+    # run falls back to the always-achievable ``min_opening`` tier (plus the
+    # same soft corner-clear bonus) instead of becoming infeasible - feasibility
+    # is never traded for the harder target. The infeasibility ladder passes no
+    # access requirements, so its probes solve the identical model twice; guard
+    # the retry on the graph being present to avoid doubling their work.
+    outcome = attempt(WALLS.door_clear_run)
+    if access_requirements and outcome.status != FEASIBLE:
+        fallback = attempt(WALLS.min_opening)
+        if fallback.status == FEASIBLE:
+            return fallback
+    return outcome

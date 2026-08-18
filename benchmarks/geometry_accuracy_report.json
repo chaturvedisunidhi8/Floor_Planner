@@ -1,0 +1,78 @@
+{
+  "title": "Geometry Accuracy — before/after milestone report",
+  "settings": {
+    "arch": {"templates": "TPL-001..012", "seeds": 2, "candidates": 3, "solver_budget_s": 1.5, "briefs": "all 10"},
+    "geo": {"templates": "TPL-001..020", "seeds": 1, "solver_budget_s": 1.0, "engine": "solver"}
+  },
+  "changes": {
+    "cp_sat.py": "corrected access-run self-terms; hard/soft run ladder (6.0 ft hard, 2.5 ft fallback); soft corner-clear bonus (weight 80); aspect steering (weight 30); uncovered-excess term (allowance 0.15, weight 2)",
+    "doors.py": "reposition ladder corner-clearance priority; two-pass door placement preferring run >= max(min_opening, door_clear_run)",
+    "units.py": "MIN_SIDE 4.5 for attached/common bathrooms, passage, foyer",
+    "topology.py": "RoomSpec.natural_short + _natural_short() steering",
+    "layout_engine.py": "access_run_ft passthrough"
+  },
+  "arch": {
+    "plans": 192,
+    "before": {
+      "score_avg": 82.8646, "door_corner_violations_per_plan": 4.7656,
+      "door_spacing_violations_per_plan": 0.0, "opposing_door_pairs_per_plan": 0.2292,
+      "slender_bathrooms_share": 0.6339, "corridor_min_width_ft": 4.0604,
+      "uncovered_fraction": 0.1452, "corridor_fragmentation": 0.6875,
+      "balcony_without_habitable": 36, "attached_bath_bedroom_share": 0.7633,
+      "bathroom_social_walls_share": 0.9282, "common_bath_bedroom_share": 0.4948,
+      "bedroom_from_circulation": 1.0, "cross_ventilated_rooms_share": 0.1319,
+      "window_corner_violations_per_plan": 0.0, "window_door_violations_per_plan": 0.0,
+      "time_ms": 3356.6
+    },
+    "after": {
+      "score_avg": 85.0292, "door_corner_violations_per_plan": 0.0833,
+      "door_spacing_violations_per_plan": 0.0, "opposing_door_pairs_per_plan": 0.1354,
+      "slender_bathrooms_share": 0.0, "corridor_min_width_ft": 5.6906,
+      "uncovered_fraction": 0.1078, "corridor_fragmentation": 0.75,
+      "balcony_without_habitable": 31, "attached_bath_bedroom_share": 0.8506,
+      "bathroom_social_walls_share": 0.7858, "common_bath_bedroom_share": 0.5964,
+      "bedroom_from_circulation": 1.0, "cross_ventilated_rooms_share": 0.1602,
+      "window_corner_violations_per_plan": 0.0, "window_door_violations_per_plan": 0.0,
+      "geometry_score_avg": 97.9, "furniture_shortfalls_share": 0.3083,
+      "stray_edges_per_plan": 0.0, "off_grid_edges_per_plan": 0.0,
+      "ledger_ok_share": 1.0, "label_mismatches_per_plan": 0.0,
+      "aspect_ratio": 1.4729, "time_ms": 3600.7
+    }
+  },
+  "geo": {
+    "plans": 200,
+    "before": {
+      "score_avg": 82.99, "area_err_mean": 0.0039, "area_err_p95": 0.0179,
+      "dim_err": 0.0019, "coverage": 0.8575, "corridor": 0.0284,
+      "connectivity": 1.0, "feasibility": 1.0, "overlap_rate": 0.0,
+      "forbidden_violations": 159, "unique_layouts": 159, "time_ms": 2376.5
+    },
+    "after": {
+      "score_avg": 84.4, "area_err_mean": 0.0139, "area_err_p95": 0.1094,
+      "dim_err": 0.0070, "coverage": 0.8918, "corridor": 0.0384,
+      "connectivity": 1.0, "feasibility": 1.0, "overlap_rate": 0.0,
+      "forbidden_violations": 152, "unique_layouts": 159, "time_ms": 2513.3
+    },
+    "per_brief_score_avg": {
+      "1BHK narrow 20x30": [86.87, 87.09],
+      "2BHK deep 25x50": [80.98, 85.48],
+      "2BHK irregular 26x38": [83.93, 85.43],
+      "2BHK wide 40x20": [86.99, 84.58],
+      "3BHK square 35x35": [85.0, 84.82],
+      "3BHK standard 30x45": [84.0, 84.42],
+      "4BHK 40x55": [78.15, 81.79],
+      "4BHK deep 30x65": [78.04, 81.59]
+    }
+  },
+  "verification": {
+    "pytest": "486 passed in 308.56s",
+    "ruff": "clean (app scripts tests)",
+    "feasibility_probe": "96/96 feasible briefs x templates green; infeasible controls (1BHK 18x25, 3BHK 20x40) still refused; no constraint weakened"
+  },
+  "trade_offs": [
+    "Area error rose 0.004->0.014 (p95 0.018->0.109) on big-plot briefs in exchange for coverage 85.7%->89.2%; per-brief scores still rose on 6/8 briefs.",
+    "Runtime +5.7% (2376 -> 2513 ms/plan) from the added objective terms and two-tier ladder.",
+    "Corridor fragmentation 0.69 -> 0.75 as the planner prefers wider (5.7 ft) corridors.",
+    "Balconies without habitable room remain (31/192)."
+  ]
+}

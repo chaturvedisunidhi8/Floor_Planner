@@ -48,6 +48,7 @@ from app.geometry.solver import cp_sat
 from app.geometry.solver import infeasibility as solver_infeasibility
 from app.geometry.solver.topology import (
     TopologySearchConfig,
+    adaptive_programmes,
     candidate_programmes,
 )
 from app.geometry.validation import validate_plan
@@ -68,7 +69,7 @@ from app.geometry.vastu import ZONE_TARGETS as VASTU_ZONE_TARGETS
 from app.geometry.vastu import VastuReport
 from app.geometry.vastu import comply as comply_with_vastu
 from app.geometry.vastu import zone_score as vastu_zone_score
-from app.geometry.walls import WallModel, build_wall_model
+from app.geometry.walls import WALLS, WallModel, build_wall_model
 from app.geometry.windows import model_windows
 from app.schemas.enums import RoomType
 from app.schemas.requirements import FloorPlanRequirements
@@ -143,6 +144,9 @@ class LayoutPlan:
     #: 0..100 quality score from :mod:`app.geometry.scoring`. ``None`` for the
     #: legacy engine, which has no scoring pass.
     quality_score: float | None = None
+    #: 0..100 geometry-accuracy score from :mod:`app.geometry.accuracy`.
+    #: ``None`` for the legacy engine, which has no scoring pass.
+    geometry_score: float | None = None
     #: Modeled doorways between rooms (Milestone B). Empty for the legacy engine,
     #: whose renderer infers openings from adjacency at draw time.
     doors: list[Door] = field(default_factory=list)
@@ -291,6 +295,7 @@ class LayoutEngine:
         *,
         time_limit: float | None = None,
         topology_candidates: int | None = None,
+        access_run_ft: float | None = None,
     ) -> LayoutPlan:
         """CP-SAT path: refuse infeasible briefs instead of shrinking them.
 
@@ -309,6 +314,17 @@ class LayoutEngine:
         base programme's room order, so every downstream mapping of specs to
         rooms is unchanged. If no candidate is feasible the base programme owns
         the refusal - the brief is what it was, whichever candidate failed.
+
+        **Adaptive search**: after the base candidate solves and passes the
+        strict gate, its plan is measured with the architectural metrics and
+        that measurement decides how the remaining candidate budget is spent.
+        Measured weaknesses (fragmented corridor, wet zone away from the
+        bedrooms, rooms starved of daylight) buy targeted soft-bias candidates
+        (:func:`adaptive_programmes`) that attack exactly those axes, replacing
+        the blind permutation/zoning variants the standard list would otherwise
+        burn the same solver calls on. The total number of solves still never
+        exceeds ``topology_candidates`` and the base is never solved twice, so
+        the never-worse-than-base guarantee is unchanged.
         """
         envelope = Envelope(self._w, self._l)
         config = self._topology_config(topology_candidates)
@@ -332,6 +348,7 @@ class LayoutEngine:
         budget = time_limit or cp_sat.DEFAULT_TIME_LIMIT
         base_outcome: cp_sat.SolverOutcome | None = None
         base_report = None
+        base_plan: Plan | None = None
         best_candidate: object | None = None
         best_outcome: cp_sat.SolverOutcome | None = None
         best_plan: Plan | None = None
@@ -339,7 +356,10 @@ class LayoutEngine:
         best_score = -1.0
         search_log: list[dict] = []
 
-        for candidate in candidates:
+        def run(candidate) -> None:
+            """Solve one candidate, gate it, score it and track the best."""
+            nonlocal base_outcome, base_report, base_plan
+            nonlocal best_score, best_candidate, best_outcome, best_plan, best_report
             outcome = cp_sat.solve(
                 candidate.specs,
                 envelope,
@@ -347,6 +367,7 @@ class LayoutEngine:
                 time_limit=budget,
                 access_requirements=candidate.access_requirements,
                 spatial_bias=candidate.spatial_bias,
+                access_run_ft=access_run_ft or WALLS.door_clear_run,
             )
             entry: dict = {"label": candidate.label, "status": outcome.status}
             if outcome.status != cp_sat.FEASIBLE:
@@ -363,7 +384,7 @@ class LayoutEngine:
                 if candidate is base:
                     base_outcome = outcome
                 search_log.append(entry)
-                continue
+                return
 
             # Every feasible candidate runs the same finish the single-programme
             # engine gave its plan: rooms back into the base order, doors,
@@ -395,9 +416,14 @@ class LayoutEngine:
                     base_outcome = outcome
                     base_report = report
                 search_log.append(entry)
-                continue
-            plan.quality_score = score_plan(plan, self._req).total
+                return
+            scores = score_plan(plan, self._req)
+            plan.quality_score = scores.total
+            plan.geometry_score = scores.geometry
             entry["score"] = plan.quality_score
+            entry["is_optimal"] = outcome.is_optimal
+            if candidate is base:
+                base_plan = plan
             if plan.quality_score > best_score:
                 best_score = plan.quality_score
                 best_candidate, best_outcome, best_plan, best_report = (
@@ -407,6 +433,24 @@ class LayoutEngine:
                     report,
                 )
             search_log.append(entry)
+
+        # Candidate 0 is always the base programme; solve it first so its plan
+        # can be measured. The adaptive stage then re-prioritises the remaining
+        # budget: the weaknesses measured in the base plan buy targeted
+        # soft-bias candidates that attack exactly those axes, pruning the blind
+        # permutation/zoning variants the standard list would otherwise spend
+        # the same solver calls on. The base is never re-solved and the total
+        # never exceeds ``config.max_candidates`` - solving an adaptive
+        # candidate replaces a standard one, it never adds one.
+        run(base)
+        adaptive = (
+            adaptive_programmes(base, base_plan, weight=config.bias_weight)
+            if base_plan is not None
+            else []
+        )
+        solve_order = [base, *adaptive, *candidates[1:]] if adaptive else candidates
+        for candidate in solve_order[1 : config.max_candidates]:
+            run(candidate)
 
         if best_plan is None:
             return self._solver_refusal(
@@ -584,7 +628,7 @@ class LayoutEngine:
             logger.info(
                 "solver_candidate template=%s seed=%d status=feasible "
                 "candidate=%s topology=[%s] rooms=%d violations=%d validation=ok "
-                "objective=%s score=%s elapsed_s=%s dims=[%s]",
+                "objective=%s score=%s optimal=%s elapsed_s=%s dims=[%s]",
                 template_id,
                 seed,
                 candidate_label,
@@ -593,6 +637,7 @@ class LayoutEngine:
                 len(validation_errors or []),
                 outcome.objective if outcome is not None else None,
                 round(plan.quality_score, 1) if plan.quality_score is not None else None,
+                outcome.is_optimal if outcome is not None else None,
                 None if elapsed is None else round(elapsed, 3),
                 dims,
             )
@@ -634,6 +679,7 @@ class LayoutEngine:
             status="feasible",
             infeasibility=None,
             quality_score=plan.quality_score,
+            geometry_score=plan.geometry_score,
             doors=plan.doors,
             windows=plan.windows,
             walls=plan.walls,

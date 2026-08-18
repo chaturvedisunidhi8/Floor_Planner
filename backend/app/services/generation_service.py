@@ -290,6 +290,7 @@ class GenerationService:
             seed=plan.seed,
             status="feasible",
             quality_score=plan.quality_score,
+            geometry_accuracy=plan.geometry_score,
             vastu_score=plan.vastu.score if plan.vastu else None,
             vastu_notes=plan.vastu.notes if plan.vastu else [],
         )
